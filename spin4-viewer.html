@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Spin(4) on D₄ Root System</title>
+<style>
+  body { margin:0; background:#0a0a1a; color:#ddd; font-family:'Segoe UI',monospace; overflow:hidden; display:flex; }
+  #view { flex:1; }
+  canvas { display:block; }
+  #panel {
+    width:170px; background:rgba(0,0,0,0.88); padding:8px 10px;
+    overflow-y:auto; border-left:1px solid #222; font-size:11px; line-height:1.4;
+  }
+  #panel h2 { color:#ff9; margin:0 0 6px; font-size:12px; border-bottom:1px solid #333; padding-bottom:5px; }
+  .sec { margin-bottom:8px; }
+  .sec-t { color:#8cf; font-weight:bold; font-size:9px; text-transform:uppercase; letter-spacing:1px; margin-bottom:3px; }
+  .fb {
+    display:inline-block; padding:2px 5px; margin:1px; border-radius:3px;
+    cursor:pointer; font-size:9px; font-weight:bold; border:2px solid transparent;
+    transition:all 0.15s; user-select:none;
+  }
+  .fb:hover { filter:brightness(1.3); }
+  .fb.sel { border-color:#fff; box-shadow:0 0 6px rgba(255,255,255,0.2); }
+  .info { font-size:9px; color:#aaa; line-height:1.4; }
+  .info b { color:#eee; }
+  .sr { margin:2px 0; }
+  .sr .sl { font-size:8px; color:#aaa; display:flex; justify-content:space-between; }
+  .sr .sl .v { color:#ddd; }
+  .sr input[type="range"] { width:100%; height:3px; margin:1px 0 0; }
+  .br { display:flex; gap:2px; flex-wrap:wrap; margin:2px 0; align-items:center; }
+  button.b { background:#335; border:1px solid #557; color:#ccc; padding:2px 5px; border-radius:3px; cursor:pointer; font-size:9px; }
+  button.b:hover { background:#447; }
+  button.b.on { background:#b33; border-color:#f66; color:#fff; }
+  input[type="color"] { width:24px; height:18px; border:1px solid #555; border-radius:2px; cursor:pointer; padding:0; background:none; }
+  #tooltip {
+    position:absolute; display:none; background:rgba(0,0,0,0.92);
+    padding:6px 10px; border-radius:4px; font-size:10px; pointer-events:none;
+    z-index:20; border:1px solid #444; line-height:1.4;
+  }
+</style>
+</head>
+<body>
+<div id="view"></div>
+<div id="panel">
+  <h2>Spin(4) on D₄ Root System</h2>
+  <div class="sec">
+    <div class="sec-t">Fiber</div>
+    <div id="fiberBtns"></div>
+    <div class="br" style="margin-top:4px">
+      <button class="b" id="btnPlay">&#9654; Play</button>
+    </div>
+    <div class="sr">
+      <div class="sl">FPS <span class="v" id="fpsV">10</span></div>
+      <input type="range" id="fps" min="5" max="30" value="10" step="1">
+    </div>
+  </div>
+  <div class="sec">
+    <div class="sec-t">4D Projection</div>
+    <div class="sr">
+      <div class="sl">Perspective <span class="v" id="proj4dV">0</span></div>
+      <input type="range" id="proj4d" min="0" max="1" value="0" step="0.05">
+    </div>
+    <div class="info" style="color:#999;font-size:7px">0 = ortho &middot; 1 = strong 4D persp</div>
+    <div class="sr" style="margin-top:3px">
+      <div class="sl">Exact value <span class="v" id="proj4dExV"></span></div>
+      <input type="number" id="proj4dNum" min="0" max="1" step="0.001" value="0"
+        style="width:100%;background:#181828;color:#ddd;border:1px solid #555;border-radius:3px;padding:2px 4px;font-size:10px;font-family:monospace;">
+    </div>
+  </div>
+  <div class="sec">
+    <div class="sec-t">Camera</div>
+    <div class="br">
+      <button class="b on" id="btnCamPersp">Persp</button>
+      <button class="b" id="btnCamOrtho">Ortho</button>
+    </div>
+  </div>
+  <div class="sec">
+    <div class="sec-t">Polyhedra</div>
+    <div class="br">
+      <button class="b" id="btnCuboct">Cuboct</button>
+      <button class="b" id="btnOcta">Octahedron</button>
+    </div>
+    <div class="sr">
+      <div class="sl">Face opacity <span class="v" id="polyOpV">0.25</span></div>
+      <input type="range" id="polyOp" min="0" max="1" value="0.25" step="0.05">
+    </div>
+  </div>
+  <div class="sec">
+    <div class="sec-t">Hexagons</div>
+    <div class="br">
+      <span style="font-size:8px;color:#aaa">Color</span>
+      <input type="color" id="hexColorPick" value="#00ffaa">
+    </div>
+    <div class="sr">
+      <div class="sl">Line opacity <span class="v" id="hexOpV">0.80</span></div>
+      <input type="range" id="hexOp" min="0" max="1" value="0.80" step="0.05">
+    </div>
+    <div class="sr">
+      <div class="sl">Fill opacity <span class="v" id="hexFillV">0.00</span></div>
+      <input type="range" id="hexFill" min="0" max="1" value="0" step="0.05">
+    </div>
+    <div class="sr">
+      <div class="sl">Width <span class="v" id="cwidthV">8</span></div>
+      <input type="range" id="cwidth" min="2" max="20" value="8" step="1">
+    </div>
+  </div>
+  <div class="sec">
+    <div class="sec-t">Display</div>
+    <div class="sr">
+      <div class="sl">Vertices <span class="v" id="vsizeV">3</span></div>
+      <input type="range" id="vsize" min="1" max="8" value="3" step="0.5">
+    </div>
+    <div class="sr">
+      <div class="sl">Root lines <span class="v" id="rlinesV">3</span></div>
+      <input type="range" id="rlines" min="0" max="12" value="3" step="0.5">
+    </div>
+    <div class="br">
+      <button class="b on" id="btnSphere">Sphere</button>
+      <button class="b on" id="btnAxes">Axes</button>
+    </div>
+  </div>
+  <div class="sec">
+    <div class="sec-t">Projection</div>
+    <div class="info" id="projInfo"></div>
+  </div>
+</div>
+<div id="tooltip"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+// ================================================================
+// DATA: 24-cell vertices on S^3 = D4 roots / sqrt(2)
+// ================================================================
+const S = 1/Math.sqrt(2);
+const verts = [
+  [S,S,0,0],[-S,-S,0,0],[S,0,S,0],[-S,0,-S,0],[0,S,-S,0],[0,-S,S,0],
+  [S,-S,0,0],[-S,S,0,0],[S,0,0,S],[-S,0,0,-S],[0,S,0,S],[0,-S,0,-S],
+  [S,0,-S,0],[-S,0,S,0],[S,0,0,-S],[-S,0,0,S],[0,0,S,-S],[0,0,-S,S],
+  [0,S,S,0],[0,-S,-S,0],[0,S,0,-S],[0,-S,0,S],[0,0,S,S],[0,0,-S,-S]
+];
+const fiberOf = []; for(let f=0;f<4;f++) for(let i=0;i<6;i++) fiberOf.push(f);
+const fColors = [0x00ff88, 0xff6644, 0x4488ff, 0xcc66ff];
+const fHex = ['#00ff88','#ff6644','#4488ff','#cc66ff'];
+const dropAx = [3, 2, 1, 0];
+const axLbl = ['x\u2081','x\u2082','x\u2083','x\u2084'];
+
+// ================================================================
+// R4 helpers
+// ================================================================
+function d4(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]+a[3]*b[3];}
+function sc4(a,s){return a.map(x=>x*s);}
+function sb4(a,b){return a.map((x,i)=>x-b[i]);}
+function nm4(a){return Math.sqrt(d4(a,a));}
+function nz4(a){const n=nm4(a);return n>1e-10?sc4(a,1/n):a;}
+
+// ================================================================
+// Hexagonal ordering for each fiber
+// ================================================================
+function fiberOrder(fi){
+  const idx=[]; for(let i=0;i<24;i++) if(fiberOf[i]===fi) idx.push(i);
+  const u1=nz4([...verts[idx[0]]]);
+  let u2r;
+  for(let i=1;i<idx.length;i++){
+    const v=nz4([...verts[idx[i]]]);
+    if(Math.abs(d4(u1,v))<0.99){u2r=v;break;}
+  }
+  const u2=nz4(sb4(u2r,sc4(u1,d4(u2r,u1))));
+  return idx.map(i=>({i,a:Math.atan2(d4(verts[i],u2),d4(verts[i],u1))}))
+    .sort((a,b)=>a.a-b.a).map(x=>x.i);
+}
+const hexOrders = [0,1,2,3].map(fiberOrder);
+
+// ================================================================
+// 4D -> 3D Projection (orthographic or perspective)
+// ================================================================
+let perspSlider = 0;
+
+function get4dDist(){
+  if(perspSlider <= 0) return 0;
+  return 2 / perspSlider;
+}
+
+function proj(v4, s){
+  const d = dropAx[s];
+  const w = v4[d];
+  const pd = get4dDist();
+  const c = [];
+  for(let i=0; i<4; i++){
+    if(i === d) continue;
+    if(pd > 0){
+      c.push(v4[i] * pd / (pd - w));
+    } else {
+      c.push(v4[i]);
+    }
+  }
+  return new THREE.Vector3(c[0], c[1], c[2]);
+}
+
+function hexPath(fi, s){
+  const order = hexOrders[fi];
+  const path = new THREE.CurvePath();
+  for(let k=0; k<6; k++){
+    const pa = proj(verts[order[k]], s);
+    const pb = proj(verts[order[(k+1)%6]], s);
+    path.add(new THREE.LineCurve3(pa, pb));
+  }
+  return path;
+}
+
+// ================================================================
+// Three.js scene
+// ================================================================
+let sel = 0;
+let showSphere=true, showAxes=true, showCuboct=false, showOcta=false;
+let curveScale=8, vertScale=3, rootThick=3, polyOpacity=0.25;
+let hexColor='#00ffaa', hexOpacity=0.80, hexFillOpacity=0;
+let animPlaying=false, animFps=10, animTimer=null;
+let useOrtho = false;
+
+const vertColor = 0xffffff;
+const edgeColor = 0xffffff;
+
+const viewDiv = document.getElementById('view');
+const W=()=>viewDiv.clientWidth, H=()=>viewDiv.clientHeight;
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(50, W()/H(), 0.01, 100);
+cam.position.set(2, 1.2, 2.8);
+
+// Orthographic camera (synced from perspective camera each frame)
+const orthoCam = new THREE.OrthographicCamera(-2, 2, 2, -2, 0.01, 100);
+orthoCam.position.copy(cam.position);
+
+function activeCam(){ return useOrtho ? orthoCam : cam; }
+
+function syncOrthoCam(){
+  orthoCam.position.copy(cam.position);
+  orthoCam.quaternion.copy(cam.quaternion);
+  const dist = cam.position.length();
+  const halfH = dist * Math.tan(cam.fov * Math.PI / 360);
+  const aspect = W() / H();
+  orthoCam.left = -halfH * aspect;
+  orthoCam.right = halfH * aspect;
+  orthoCam.top = halfH;
+  orthoCam.bottom = -halfH;
+  orthoCam.updateProjectionMatrix();
+}
+
+const ren = new THREE.WebGLRenderer({antialias:true});
+ren.setSize(W(),H()); ren.setPixelRatio(window.devicePixelRatio); ren.setClearColor(0x0a0a1a);
+viewDiv.appendChild(ren.domElement);
+
+const ctrl = new THREE.OrbitControls(cam, ren.domElement);
+ctrl.enableDamping=true; ctrl.dampingFactor=0.08;
+
+scene.add(new THREE.AmbientLight(0x666666));
+const dl = new THREE.DirectionalLight(0xffffff, 0.7);
+dl.position.set(5,5,5); scene.add(dl);
+const dl2 = new THREE.DirectionalLight(0x444466, 0.3);
+dl2.position.set(-3,-2,-4); scene.add(dl2);
+
+// Reference sphere
+const sphMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(1,48,32),
+  new THREE.MeshBasicMaterial({color:0x223344,wireframe:true,transparent:true,opacity:0.06})
+);
+scene.add(sphMesh);
+
+// Coordinate axes
+const axGroup = new THREE.Group();
+const axLen=1.4, axCols=[0x884444,0x448844,0x444488];
+for(let i=0;i<3;i++){
+  const pts=[new THREE.Vector3(),new THREE.Vector3()];
+  pts[0].setComponent(i,-axLen); pts[1].setComponent(i,axLen);
+  axGroup.add(new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineBasicMaterial({color:axCols[i],transparent:true,opacity:0.15})
+  ));
+}
+scene.add(axGroup);
+
+// Vertex spheres
+const vmeshes = [];
+for(let i=0;i<24;i++){
+  const m = new THREE.Mesh(
+    new THREE.SphereGeometry(0.01,16,16),
+    new THREE.MeshPhongMaterial({color:vertColor, emissive:vertColor, emissiveIntensity:0.35})
+  );
+  m.userData = {idx:i, fiber:fiberOf[i]};
+  scene.add(m); vmeshes.push(m);
+}
+
+// Root lines as tubes (truncated to 90%)
+const rlGroup = new THREE.Group();
+function makeRootLine(i){
+  const p = proj(verts[i], sel);
+  const r = rootThick * 0.001;
+  if(r < 0.0005) return null;
+  const end = p.clone().multiplyScalar(0.90);
+  const path = new THREE.LineCurve3(new THREE.Vector3(), end);
+  const geo = new THREE.TubeGeometry(path, 2, r, 6, false);
+  const mat = new THREE.MeshBasicMaterial({color:vertColor, transparent:true, opacity:0.4});
+  return new THREE.Mesh(geo, mat);
+}
+scene.add(rlGroup);
+
+// Hexagon tubes
+const tubes = [];
+function makeTube(fi){
+  const path = hexPath(fi, sel);
+  const radius = curveScale * 0.001;
+  const geo = new THREE.TubeGeometry(path, 36, Math.max(0.001, radius), 8, false);
+  const c = new THREE.Color(hexColor);
+  const isSel = fi === sel;
+  const mat = new THREE.MeshPhongMaterial({
+    color:c, emissive:c,
+    emissiveIntensity: isSel ? 0.5 : 0.15,
+    transparent:true, opacity: hexOpacity * (isSel ? 1.0 : 0.5),
+    side: THREE.DoubleSide
+  });
+  return new THREE.Mesh(geo, mat);
+}
+for(let f=0;f<4;f++){const t=makeTube(f); scene.add(t); tubes.push(t);}
+
+// Hexagon fill planes
+const hexFills = [];
+function makeHexFill(fi){
+  const order = hexOrders[fi];
+  const pts = order.map(i => proj(verts[i], sel));
+  const positions = [];
+  for(let t=1; t<5; t++){
+    positions.push(pts[0].x, pts[0].y, pts[0].z);
+    positions.push(pts[t].x, pts[t].y, pts[t].z);
+    positions.push(pts[t+1].x, pts[t+1].y, pts[t+1].z);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.computeVertexNormals();
+  const c = new THREE.Color(hexColor);
+  const isSel = fi === sel;
+  const mat = new THREE.MeshPhongMaterial({
+    color:c, emissive:c, emissiveIntensity:0.1,
+    transparent:true, opacity: hexFillOpacity * (isSel ? 1.0 : 0.5),
+    side: THREE.DoubleSide, depthWrite:false
+  });
+  return new THREE.Mesh(geo, mat);
+}
+for(let f=0;f<4;f++){const m=makeHexFill(f); scene.add(m); hexFills.push(m);}
+
+// ================================================================
+// Polyhedra (cuboctahedron + octahedron)
+// ================================================================
+const cuboctGroup = new THREE.Group(); cuboctGroup.visible=false; scene.add(cuboctGroup);
+const octaGroup = new THREE.Group(); octaGroup.visible=false; scene.add(octaGroup);
+
+function clearGroup(g){
+  while(g.children.length){
+    const c=g.children[0];
+    if(c.isGroup) clearGroup(c);
+    c.geometry?.dispose(); c.material?.dispose(); g.remove(c);
+  }
+}
+
+// Convex hull for face mesh ONLY (no edges - edges computed separately)
+function convexFaceMesh(pts, faceColor, opacity){
+  const n = pts.length;
+  if(n < 4) return null;
+  const usedKeys = new Set(), allFaces = [];
+
+  for(let i=0;i<n;i++) for(let j=i+1;j<n;j++) for(let k=j+1;k<n;k++){
+    const ab = new THREE.Vector3().subVectors(pts[j],pts[i]);
+    const ac = new THREE.Vector3().subVectors(pts[k],pts[i]);
+    const norm = new THREE.Vector3().crossVectors(ab,ac);
+    if(norm.length() < 1e-10) continue;
+    norm.normalize();
+    let valid=true, side=0;
+    const coplanar = [i,j,k];
+    for(let l=0;l<n;l++){
+      if(l===i||l===j||l===k) continue;
+      const dd = norm.dot(new THREE.Vector3().subVectors(pts[l],pts[i]));
+      if(Math.abs(dd) < 0.01) coplanar.push(l);
+      else if(side===0) side = dd>0 ? 1 : -1;
+      else if((dd>0?1:-1) !== side){valid=false;break;}
+    }
+    if(!valid || side===0) continue;
+    const key = [...coplanar].sort((a,b)=>a-b).join(',');
+    if(usedKeys.has(key)) continue;
+    usedKeys.add(key);
+    allFaces.push({verts:coplanar});
+  }
+
+  const positions = [];
+  for(const face of allFaces){
+    const fv = face.verts;
+    if(fv.length === 3){
+      for(const idx of fv){const p=pts[idx]; positions.push(p.x,p.y,p.z);}
+    } else {
+      const p0=pts[fv[0]];
+      const u=new THREE.Vector3().subVectors(pts[fv[1]],p0).normalize();
+      const tmp=new THREE.Vector3().subVectors(pts[fv[2]],p0);
+      const nm=new THREE.Vector3().crossVectors(u,tmp).normalize();
+      const ww=new THREE.Vector3().crossVectors(nm,u);
+      const pts2d=fv.map(idx=>{
+        const dd=new THREE.Vector3().subVectors(pts[idx],p0);
+        return {idx,x:dd.dot(u),y:dd.dot(ww)};
+      });
+      const cx=pts2d.reduce((s,p)=>s+p.x,0)/pts2d.length;
+      const cy=pts2d.reduce((s,p)=>s+p.y,0)/pts2d.length;
+      pts2d.sort((a,b)=>Math.atan2(a.y-cy,a.x-cx)-Math.atan2(b.y-cy,b.x-cx));
+      for(let t=1;t<pts2d.length-1;t++){
+        for(const idx of [pts2d[0].idx,pts2d[t].idx,pts2d[t+1].idx]){
+          const p=pts[idx]; positions.push(p.x,p.y,p.z);
+        }
+      }
+    }
+  }
+  if(positions.length===0) return null;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+  geo.computeVertexNormals();
+  const fullyOpaque = opacity >= 0.99;
+  return new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
+    color:faceColor, transparent:!fullyOpaque, opacity, side:THREE.DoubleSide, depthWrite:fullyOpaque
+  }));
+}
+
+function buildPolyhedra(){
+  clearGroup(cuboctGroup);
+  clearGroup(octaGroup);
+
+  const d = dropAx[sel];
+
+  // ====== CUBOCTAHEDRON ======
+  // 12 outer vertices: those with zero component along dropped axis
+  // All live on S^2 of radius 1 in the orthographic projection
+  const outerIdx = [];
+  for(let i = 0; i < 24; i++){
+    if(Math.abs(verts[i][d]) < 1e-10) outerIdx.push(i);
+  }
+  const outerPts = outerIdx.map(i => proj(verts[i], sel));
+
+  // Edges: two outer vertices connected iff their R4 distance^2 = 1
+  // (cuboctahedron edge length = 1 for our coordinates)
+  const cuboEdgePairs = [];
+  for(let a = 0; a < outerIdx.length; a++){
+    for(let b = a+1; b < outerIdx.length; b++){
+      let dist2 = 0;
+      for(let k = 0; k < 4; k++){
+        if(k !== d) dist2 += (verts[outerIdx[a]][k] - verts[outerIdx[b]][k])**2;
+      }
+      if(Math.abs(dist2 - 1) < 0.05) cuboEdgePairs.push([a, b]);
+    }
+  }
+
+  if(outerPts.length >= 4){
+    const grp = new THREE.Group();
+
+    // Face mesh from convex hull (correct faces)
+    const faceMesh = convexFaceMesh(outerPts, 0xffcc00, polyOpacity);
+    if(faceMesh) grp.add(faceMesh);
+
+    // Edge lines from proper edge computation (NOT EdgesGeometry)
+    const edgePositions = [];
+    for(const [a,b] of cuboEdgePairs){
+      edgePositions.push(outerPts[a].x, outerPts[a].y, outerPts[a].z);
+      edgePositions.push(outerPts[b].x, outerPts[b].y, outerPts[b].z);
+    }
+    if(edgePositions.length > 0){
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(edgePositions, 3));
+      const eOp = Math.max(polyOpacity, 0.3);
+      grp.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+        color:edgeColor, transparent:eOp<0.99, opacity:eOp
+      })));
+    }
+
+    cuboctGroup.add(grp);
+  }
+
+  // ====== OCTAHEDRON ======
+  // 12 inner vertices: those with NONZERO component along dropped axis
+  // In ortho mode these project pairwise to 6 unique positions: (+-S,0,0),(0,+-S,0),(0,0,+-S)
+  // All live on S^2 of radius S = 1/sqrt(2) in orthographic projection
+  const innerIdx = [];
+  for(let i = 0; i < 24; i++){
+    if(Math.abs(verts[i][d]) > 1e-10) innerIdx.push(i);
+  }
+
+  // Group by ortho position (merge overlapping pairs)
+  const posMap = {};
+  for(const i of innerIdx){
+    const coords = [];
+    for(let k = 0; k < 4; k++){
+      if(k !== d) coords.push(Math.round(verts[i][k] * 10000));
+    }
+    const key = coords.join(',');
+    if(!posMap[key]) posMap[key] = [];
+    posMap[key].push(i);
+  }
+
+  // Average each pair's projected positions -> 6 octahedral vertices
+  const octaVerts = [];
+  for(const key of Object.keys(posMap)){
+    const ids = posMap[key];
+    const avg = new THREE.Vector3();
+    for(const i of ids) avg.add(proj(verts[i], sel));
+    avg.divideScalar(ids.length);
+    octaVerts.push(avg);
+  }
+
+  if(octaVerts.length >= 3){
+    // Edges: non-antipodal pairs (antipodal = avg positions sum to ~zero)
+    const octaEdgePairs = [];
+    for(let i = 0; i < octaVerts.length; i++){
+      for(let j = i+1; j < octaVerts.length; j++){
+        const sum = octaVerts[i].clone().add(octaVerts[j]);
+        if(sum.length() > 0.05) octaEdgePairs.push([i, j]);
+      }
+    }
+
+    // Faces: 3-cliques (three mutually non-antipodal vertices)
+    const octaAdj = octaVerts.map(() => new Set());
+    for(const [a,b] of octaEdgePairs){ octaAdj[a].add(b); octaAdj[b].add(a); }
+
+    const facePositions = [];
+    for(let a = 0; a < octaVerts.length; a++){
+      for(const b of octaAdj[a]){
+        if(b <= a) continue;
+        for(const c of octaAdj[b]){
+          if(c <= b) continue;
+          if(!octaAdj[a].has(c)) continue;
+          const pa = octaVerts[a], pb = octaVerts[b], pc = octaVerts[c];
+          facePositions.push(pa.x,pa.y,pa.z, pb.x,pb.y,pb.z, pc.x,pc.y,pc.z);
+        }
+      }
+    }
+
+    const edgePositions = [];
+    for(const [a,b] of octaEdgePairs){
+      edgePositions.push(octaVerts[a].x, octaVerts[a].y, octaVerts[a].z);
+      edgePositions.push(octaVerts[b].x, octaVerts[b].y, octaVerts[b].z);
+    }
+
+    const grp = new THREE.Group();
+
+    if(facePositions.length > 0){
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(facePositions, 3));
+      geo.computeVertexNormals();
+      const fullyOpaque = polyOpacity >= 0.99;
+      grp.add(new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
+        color:0xffffff, transparent:!fullyOpaque, opacity:polyOpacity,
+        side:THREE.DoubleSide, depthWrite:fullyOpaque
+      })));
+    }
+
+    if(edgePositions.length > 0){
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(edgePositions, 3));
+      const eOp = Math.max(polyOpacity, 0.3);
+      grp.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+        color:edgeColor, transparent:eOp<0.99, opacity:eOp
+      })));
+    }
+
+    octaGroup.add(grp);
+  }
+}
+
+// ================================================================
+// Update
+// ================================================================
+function update(){
+  for(let i=0;i<24;i++){
+    const p = proj(verts[i], sel);
+    vmeshes[i].position.copy(p);
+    vmeshes[i].scale.setScalar(vertScale);
+  }
+  while(rlGroup.children.length){
+    const c=rlGroup.children[0]; c.geometry?.dispose(); c.material?.dispose(); rlGroup.remove(c);
+  }
+  for(let i=0;i<24;i++){
+    const m = makeRootLine(i);
+    if(m) rlGroup.add(m);
+  }
+  for(let f=0;f<4;f++){
+    scene.remove(tubes[f]); tubes[f].geometry.dispose(); tubes[f].material.dispose();
+    tubes[f] = makeTube(f); scene.add(tubes[f]);
+  }
+  for(let f=0;f<4;f++){
+    scene.remove(hexFills[f]); hexFills[f].geometry?.dispose(); hexFills[f].material?.dispose();
+    hexFills[f] = makeHexFill(f); scene.add(hexFills[f]);
+  }
+  sphMesh.visible = showSphere;
+  axGroup.visible = showAxes;
+  buildPolyhedra();
+  cuboctGroup.visible = showCuboct;
+  octaGroup.visible = showOcta;
+  updateInfo();
+  updateFiberBtns();
+}
+
+function updateInfo(){
+  const d = dropAx[sel];
+  const keep = [0,1,2,3].filter(i=>i!==d).map(i=>axLbl[i]).join(', ');
+  const pd = get4dDist();
+  let html =
+    'Drop <b>'+axLbl[d]+'</b> \u2192 R\u00B3 = ('+keep+')<br>'+
+    '<b>Fiber '+sel+'</b>: '+axLbl[d]+'=0 \u2192 <b>hexagon</b><br>'+
+    (pd>0 ? '4D proj dist: <b>'+pd.toFixed(3)+'</b>' : '<b>Orthographic</b>');
+  // Fang's special ratio at projection = 0.253
+  if(Math.abs(perspSlider - 0.253) < 0.005){
+    html += '<br><span style="color:#ff9">Fang ratio: \u221A(7\u22123\u221A5) : \u221A(3\u2212\u221A5) : 1<br>= 0.540 : 0.874 : 1</span>';
+  }
+  document.getElementById('projInfo').innerHTML = html;
+}
+
+function updateFiberBtns(){
+  document.querySelectorAll('.fb').forEach((x,i)=>{x.className='fb'+(i===sel?' sel':'');});
+}
+
+// ================================================================
+// UI
+// ================================================================
+const bc = document.getElementById('fiberBtns');
+for(let f=0;f<4;f++){
+  const b = document.createElement('span');
+  b.className = 'fb' + (f===sel?' sel':'');
+  b.style.background = fHex[f]+'22';
+  b.style.color = fHex[f];
+  b.textContent = f;
+  b.onclick = ()=>{ sel=f; update(); };
+  bc.appendChild(b);
+}
+
+// Sliders
+for(const[id,setter,vid,fmt] of [
+  ['vsize', v=>{vertScale=v;update();}, 'vsizeV', v=>v],
+  ['cwidth', v=>{curveScale=v;update();}, 'cwidthV', v=>v],
+  ['rlines', v=>{rootThick=v;update();}, 'rlinesV', v=>v],
+]){
+  const el = document.getElementById(id);
+  el.oninput = ()=>{setter(+el.value); document.getElementById(vid).textContent=fmt(+el.value);};
+}
+
+// 4D projection slider + numeric input (synced)
+function setProj4d(val){
+  perspSlider = Math.max(0, Math.min(1, val));
+  document.getElementById('proj4d').value = perspSlider;
+  document.getElementById('proj4dV').textContent = perspSlider.toFixed(3);
+  document.getElementById('proj4dNum').value = perspSlider;
+  update();
+}
+document.getElementById('proj4d').oninput = function(){
+  setProj4d(+this.value);
+};
+document.getElementById('proj4dNum').oninput = function(){
+  setProj4d(+this.value);
+};
+
+// Hex color picker
+document.getElementById('hexColorPick').oninput = function(){
+  hexColor = this.value; update();
+};
+
+// Hex line opacity
+document.getElementById('hexOp').oninput = function(){
+  hexOpacity = +this.value;
+  document.getElementById('hexOpV').textContent = hexOpacity.toFixed(2);
+  tubes.forEach((t,i)=>{
+    t.material.opacity = hexOpacity * (i===sel ? 1.0 : 0.5);
+  });
+};
+
+// Hex fill opacity
+document.getElementById('hexFill').oninput = function(){
+  hexFillOpacity = +this.value;
+  document.getElementById('hexFillV').textContent = hexFillOpacity.toFixed(2);
+  hexFills.forEach((m,i)=>{
+    m.material.opacity = hexFillOpacity * (i===sel ? 1.0 : 0.5);
+  });
+};
+
+// Display toggles
+document.getElementById('btnSphere').onclick = function(){
+  showSphere=!showSphere; this.className='b'+(showSphere?' on':''); update();
+};
+document.getElementById('btnAxes').onclick = function(){
+  showAxes=!showAxes; this.className='b'+(showAxes?' on':''); update();
+};
+
+// Camera toggle
+document.getElementById('btnCamPersp').onclick = function(){
+  useOrtho = false;
+  this.className = 'b on';
+  document.getElementById('btnCamOrtho').className = 'b';
+};
+document.getElementById('btnCamOrtho').onclick = function(){
+  useOrtho = true;
+  this.className = 'b on';
+  document.getElementById('btnCamPersp').className = 'b';
+};
+
+// Polyhedra toggles
+document.getElementById('btnCuboct').onclick = function(){
+  showCuboct=!showCuboct; this.className='b'+(showCuboct?' on':'');
+  cuboctGroup.visible = showCuboct;
+};
+document.getElementById('btnOcta').onclick = function(){
+  showOcta=!showOcta; this.className='b'+(showOcta?' on':'');
+  octaGroup.visible = showOcta;
+};
+
+// Polyhedra face opacity — 0 to 100%. At full opacity disable transparency for proper rendering.
+function applyPolyOpacity(){
+  const fullyOpaque = polyOpacity >= 0.99;
+  [cuboctGroup, octaGroup].forEach(grp => {
+    grp.traverse(c=>{
+      if(c.isMesh){
+        c.material.opacity = polyOpacity;
+        c.material.transparent = !fullyOpaque;
+        c.material.depthWrite = fullyOpaque;
+        c.material.needsUpdate = true;
+      }
+      if(c.isLineSegments || c.isLine){
+        c.material.opacity = Math.max(polyOpacity, 0.3);
+        c.material.transparent = polyOpacity < 0.99;
+        c.material.needsUpdate = true;
+      }
+    });
+  });
+}
+document.getElementById('polyOp').oninput = function(){
+  polyOpacity = +this.value;
+  document.getElementById('polyOpV').textContent = polyOpacity.toFixed(2);
+  applyPolyOpacity();
+};
+
+// Animation
+document.getElementById('fps').oninput = function(){
+  animFps = +this.value;
+  document.getElementById('fpsV').textContent = animFps;
+  if(animPlaying) restartAnim();
+};
+
+function restartAnim(){
+  if(animTimer) clearInterval(animTimer);
+  animTimer = setInterval(()=>{ sel=(sel+1)%4; update(); }, 1000/animFps);
+}
+
+document.getElementById('btnPlay').onclick = function(){
+  animPlaying = !animPlaying;
+  this.textContent = animPlaying ? '\u23F8 Stop' : '\u25B6 Play';
+  this.className = 'b' + (animPlaying?' on':'');
+  if(animPlaying) restartAnim();
+  else if(animTimer){clearInterval(animTimer); animTimer=null;}
+};
+
+// Init
+buildPolyhedra();
+update();
+
+// Resize
+window.addEventListener('resize', ()=>{
+  cam.aspect = W()/H(); cam.updateProjectionMatrix();
+  ren.setSize(W(),H());
+});
+
+// Tooltip
+const rc=new THREE.Raycaster(), mv=new THREE.Vector2(), tip=document.getElementById('tooltip');
+ren.domElement.addEventListener('mousemove', e=>{
+  const r = ren.domElement.getBoundingClientRect();
+  mv.x = ((e.clientX-r.left)/r.width)*2-1;
+  mv.y = -((e.clientY-r.top)/r.height)*2+1;
+  rc.setFromCamera(mv, activeCam());
+  const h = rc.intersectObjects(vmeshes);
+  if(h.length){
+    const dd=h[0].object.userData, v=verts[dd.idx], p=proj(v,sel);
+    tip.innerHTML =
+      '<b>Root '+dd.idx+'</b> \u00B7 Fiber '+dd.fiber+'<br>'+
+      'S\u00B3: ('+v.map(x=>x.toFixed(3)).join(', ')+')<br>'+
+      'R\u00B3: ('+[p.x,p.y,p.z].map(x=>x.toFixed(3)).join(', ')+')';
+    tip.style.display='block';
+    tip.style.left=(e.clientX+14)+'px';
+    tip.style.top=(e.clientY-10)+'px';
+  } else tip.style.display='none';
+});
+
+// Render loop
+(function anim(){
+  requestAnimationFrame(anim);
+  ctrl.update();
+  if(useOrtho){
+    syncOrthoCam();
+    ren.render(scene, orthoCam);
+  } else {
+    ren.render(scene, cam);
+  }
+})();
+</script>
+</body>
+</html>
