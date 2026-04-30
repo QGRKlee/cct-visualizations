@@ -37,9 +37,9 @@
 </header>
 
 <div class="controls">
-  <div class="cgroup"><label>γ_diag:</label><input type="range" id="gd" min="-1.118" max="1.118" step="0.005" value="0.05"><span class="stat" id="gd-val">0.050</span></div>
-  <div class="cgroup"><label>γ_x:</label><input type="range" id="gx" min="-1.118" max="1.118" step="0.005" value="0"><span class="stat" id="gx-val">0.000</span></div>
-  <div class="cgroup"><label>γ_y:</label><input type="range" id="gy" min="-1.118" max="1.118" step="0.005" value="0"><span class="stat" id="gy-val">0.000</span></div>
+  <div class="cgroup"><label>|γ_I| info:</label><input type="range" id="gd" min="-1.118" max="1.118" step="0.005" value="0" disabled><span class="stat" id="gd-val">|γ_I| = 0.050</span></div>
+  <div class="cgroup"><label>γ_a (B₃):</label><input type="range" id="gx" min="-1.118" max="1.118" step="0.005" value="0.05"><span class="stat" id="gx-val">0.050</span></div>
+  <div class="cgroup"><label>γ_b (B₄):</label><input type="range" id="gy" min="-1.118" max="1.118" step="0.005" value="0"><span class="stat" id="gy-val">0.000</span></div>
   <button id="btn-rot-fwd">↻ R (π/5)</button>
   <button id="btn-rot-bwd">↺ R⁻¹ (−π/5)</button>
   <button id="btn-zero">γ ← (0.05, 0, 0)</button>
@@ -116,8 +116,44 @@ for (let i = 0; i < 3; i++) for (let j = i+1; j < 4; j++) for (let k = j+1; k < 
   const m = Math.hypot(a[i], a[j], a[k]);
   if (m > 1e-12) { a[i]/=m; a[j]/=m; a[k]/=m; checkAxes.push(a); }
 }
-// 5D offset (we vary just one scalar γ for symmetric Penrose; offset = (γ,γ,γ,γ,γ))
-let currentOffset = [0.3, 0.3, 0.3, 0.3, 0.3];
+// =====================================================================
+// SUM-CONDITION DISCIPLINE (Effinger-Dean §4.4.1, Penrose canonicality)
+// =====================================================================
+// A 5D shift γ produces a CANONICAL Penrose tiling only when
+//   Σ_j γ_j ≡ 0 (mod 1).
+// If Σγ = 1/2 you get a *generalized* Penrose with ILLEGAL vertex
+// configurations (Effinger-Dean Fig 4.7) — 8-pointed stars, unbounded
+// degree, no match to {D, Q, K, J, S, S3, S4, S5}.
+//
+// Decomposition into E⊥ basis:
+//   B1, B2, B3, B4 each have Σ_j basis[j] = 0  (perpendicular to body diagonal)
+//   B5[j] = 1/√5 for all j                     (IS the body diagonal)
+// Hence γ = a·B3 + b·B4 + c·B5 has  Σγ = c·√5.
+//   Σγ = 0 mod 1  ⟺  c ∈ (1/√5)·ℤ, i.e. c is a lattice-aligned slab translation.
+// Old code used [0.3]*5 ≡ baseline 0.3·√5 along B5 ⟹ Σγ = 1.5 ≡ 0.5 mod 1
+// ⟹ generalized (NON-canonical) tiling. That's where the degree-8/9/10
+// vertices came from.
+// =====================================================================
+//
+// New parameterization: γ lives in the I-plane (B3, B4) only.
+//   gamma_a = B3 component,  gamma_b = B4 component
+// Σγ = 0 EXACTLY, by construction. Canonical Penrose guaranteed.
+//
+// The Z₁₀ cycle clock = Cl(5) bivector rotor R = exp((π/10) e₃e₄)
+// rotates (gamma_a, gamma_b) by π/5 per tick in the I-plane.
+// 10 ticks → cut-window configuration returns (mod-10 closure).
+// 20 ticks → spinor returns (mod-20, full Spin(5) double-cover).
+// At each tick the projector sits on ONE of the 10 Z₁₀-equivalent
+// Penrose tilings emanating from the singular Sun-centered point —
+// only 1/10 of the cycle-orbit is "on" per frame.
+let gamma_a = 0.05;  // B3 component (small but nonzero → away from singularity)
+let gamma_b = 0.0;   // B4 component
+function buildOffset() {
+  const off = [0,0,0,0,0];
+  for (let j = 0; j < 5; j++) off[j] = gamma_a*B3[j] + gamma_b*B4[j];
+  return off;
+}
+let currentOffset = buildOffset();
 let checkMin = [], checkMax = [];
 function setupCheckBounds() {
   // 32 cube vertices SHIFTED BY currentOffset
@@ -163,37 +199,70 @@ function perp3(v) {
   return [p3, p4, p5];
 }
 
-// ---- BFS patch generator (canonical) ----
+// ---- de Bruijn pentagrid patch generator (Effinger-Dean §4.1, dB81) ----
+// Replaces the prior cut-and-project / 10-axis-window approach which was a
+// 10-axis OVER-APPROXIMATION of the true rhombic-icosahedron cut window
+// (the hull has 20 facets but coordinate-triple cross products only catch
+// some of them — observed bug: spurious degree-9 / degree-10 vertices).
+//
+// Pentagrid algorithm (exact):
+//   ê_j = (cos(2πj/5), sin(2πj/5))           unit 5th-root direction vectors
+//   Grid j: lines at  x·ê_j + γ_j = k       for integer k
+//   Each (r,s) grid intersection at (k_r, k_s) gives one Penrose RHOMB.
+//   The 4 corners of that rhomb are 5-tuples (k_0..k_4) with the other
+//   three k_p = ⌈x·ê_p[0] + y·ê_p[1] + γ_p⌉ at the intersection point.
+//
+// Vertex 2D position = Σ_j k_j · (B1[j], B2[j])   (= √(2/5) · Σ k_j ê_j)
+// Σγ_j = 0 is required for canonical Penrose; we enforce by construction
+// (γ = a·B3 + b·B4 — both basis vectors sum to 0 over j).
+const eHat = [];
+for (let j = 0; j < 5; j++) eHat.push([Math.cos(2*Math.PI*j/5), Math.sin(2*Math.PI*j/5)]);
+
 function generatePatch(_unused, maxR2D = RADIUS_2D) {
-  setupCheckBounds();   // depends on currentOffset
-  const accepted = [];
-  const acceptedKey = new Set();
-  const visited = new Set();
-  const queue = [];
-  // Seed with all 32 corners of the unit hypercube containing currentOffset
-  const startCube = currentOffset.map(Math.floor);
-  for (let mask = 0; mask < 32; mask++) {
-    const v = startCube.slice();
-    for (let k = 0; k < 5; k++) v[k] += (mask>>k)&1;
-    const key = v.join(',');
-    if (!visited.has(key)) { visited.add(key); queue.push(v); }
-  }
-  let head = 0;
-  while (head < queue.length) {
-    const v = queue[head++];
-    const xy = project2D(v);
-    if (xy[0]*xy[0] + xy[1]*xy[1] > maxR2D*maxR2D) continue;
-    if (!inCut(v)) continue;
-    accepted.push(v);
-    acceptedKey.add(v.join(','));
-    for (let i = 0; i < 5; i++) {
-      for (const dir of [-1, +1]) {
-        const next = v.slice();
-        next[i] += dir;
-        const key = next.join(',');
-        if (!visited.has(key)) { visited.add(key); queue.push(next); }
+  // currentOffset already encodes γ = a·B3 + b·B4. Pentagrid γ_j = currentOffset[j].
+  const gamma5 = currentOffset;
+  // Convert R from our 2D scale (B1,B2 with √(2/5) scaling) to pentagrid's unit scale:
+  //   project2D(k) = √(2/5) · Σ k_j ê_j   ⟹   pentagrid radius = R / √(2/5)
+  const RP = maxR2D / SQRT_25;
+  const verts = new Map();   // 'k0,..,k4' → 5-tuple
+  const rangeMax = Math.ceil(RP) + 2;
+  for (let r = 0; r < 5; r++) for (let s = r+1; s < 5; s++) {
+    const det = eHat[r][0]*eHat[s][1] - eHat[r][1]*eHat[s][0];
+    if (Math.abs(det) < 1e-12) continue;
+    for (let kr = -rangeMax; kr <= rangeMax; kr++) for (let ks = -rangeMax; ks <= rangeMax; ks++) {
+      const dr = kr - gamma5[r], ds = ks - gamma5[s];
+      // Solve [ê_r; ê_s] · (x,y)^T = (dr, ds)
+      const x = (eHat[s][1]*dr - eHat[r][1]*ds) / det;
+      const y = (-eHat[s][0]*dr + eHat[r][0]*ds) / det;
+      if (x*x + y*y > RP*RP) continue;
+      // Generate ALL 4 cells around this intersection.  Cells around
+      // intersection (r, s, kr, ks) have K_r ∈ {kr, kr+1}, K_s ∈ {ks, ks+1},
+      // AND all share the same K_p (p ≠ r, s) — namely K_p = ⌈x·ê_p + γ_p⌉
+      // at the intersection (this is exact for generic γ, where no other
+      // grid p line passes through this point).  All 4 cells are valid
+      // Penrose vertices and they form the 4 corners of one rhomb.
+      const k0 = new Array(5);
+      for (let p = 0; p < 5; p++) {
+        if (p === r) k0[p] = kr;       // cell "below grid r line kr"
+        else if (p === s) k0[p] = ks;  // cell "below grid s line ks"
+        else k0[p] = Math.ceil(x*eHat[p][0] + y*eHat[p][1] + gamma5[p]);
+      }
+      for (const dr_ of [0, 1]) for (const ds_ of [0, 1]) {
+        const kc = k0.slice();
+        kc[r] += dr_; kc[s] += ds_;
+        const key = kc.join(',');
+        if (!verts.has(key)) verts.set(key, kc);
       }
     }
+  }
+  // Filter to physical-radius RADIUS_2D (with project2D scale)
+  const accepted = [];
+  const acceptedKey = new Set();
+  for (const [key, kc] of verts) {
+    const xy = project2D(kc);
+    if (xy[0]*xy[0] + xy[1]*xy[1] > maxR2D*maxR2D) continue;
+    accepted.push(kc);
+    acceptedKey.add(key);
   }
   return { accepted, acceptedKey };
 }
@@ -279,16 +348,21 @@ const particlesGroup = document.getElementById("g-particles");
 let tickCount = 0;
 
 function update() {
-  // Three sliders now drive 5D offset components 2, 3, 4 (asymmetric)
-  // Components 0, 1 remain at 0.3 (uniform Sun seed). All-uniform γ=0.3 = canonical Sun.
-  const gd = parseFloat(document.getElementById("gd").value);
-  const gx = parseFloat(document.getElementById("gx").value);
-  const gy = parseFloat(document.getElementById("gy").value);
-  document.getElementById("gd-val").textContent = gd.toFixed(3);
-  document.getElementById("gx-val").textContent = gx.toFixed(3);
-  document.getElementById("gy-val").textContent = gy.toFixed(3);
-  // Map: (gx, gy, gd) → offset components (3, 4, 2). Add 0.3 base for symmetric Penrose.
-  currentOffset = [0.3, 0.3, 0.3 + gd, 0.3 + gx, 0.3 + gy];
+  // Sliders are now I-plane coordinates of γ in E⊥ basis (B3, B4).
+  //   gx → gamma_a (B3 component)   gy → gamma_b (B4 component)
+  //   gd → DISPLAY-ONLY: shows |γ| in I-plane and current Σγ_j sanity-check.
+  // Σγ_j = 0 automatically since B3, B4 are each ⊥ body diagonal.
+  const _gd = parseFloat(document.getElementById("gd").value);  // ignored input; kept slider for layout, repurposed display below
+  const a_in = parseFloat(document.getElementById("gx").value);
+  const b_in = parseFloat(document.getElementById("gy").value);
+  gamma_a = a_in;
+  gamma_b = b_in;
+  currentOffset = buildOffset();
+  const sumGamma = currentOffset.reduce((p,q)=>p+q, 0);
+  const radIPlane = Math.hypot(gamma_a, gamma_b);
+  document.getElementById("gd-val").textContent = `|γ_I| = ${radIPlane.toFixed(3)}`;
+  document.getElementById("gx-val").textContent = a_in.toFixed(3);
+  document.getElementById("gy-val").textContent = b_in.toFixed(3);
   const t0 = performance.now();
   const { accepted, acceptedKey } = generatePatch();
   const rhombi = findRhombi(accepted, acceptedKey);
@@ -337,32 +411,40 @@ function update() {
 for (const id of ["gd", "gx", "gy"]) document.getElementById(id).addEventListener("input", () => { tickCount = 0; update(); });
 document.getElementById("show-rhombi").addEventListener("change", update);
 
+// =====================================================================
+// Z₁₀ cycle clock buttons: rotate γ in the I-plane (B3, B4) by π/5 per tick.
+// This is the Cl(5) bivector rotor R = exp((π/10) e₃e₄) acting on γ ∈ E⊥.
+// Σγ = 0 is preserved exactly (rotation in (B3,B4) stays in (B3,B4)).
+// 10 ticks → cut-window returns (mod-10 closure of observable cycle).
+// 20 ticks → full Spin(5) closure (4π double-cover, R^20 = +1).
+// =====================================================================
+function rotateIPlane(sign) {
+  const a = parseFloat(document.getElementById("gx").value);
+  const b = parseFloat(document.getElementById("gy").value);
+  const ang = sign * Math.PI / 5;
+  const ca = Math.cos(ang), sa = Math.sin(ang);
+  const a2 = a*ca - b*sa, b2 = a*sa + b*ca;
+  document.getElementById("gx").value = a2.toFixed(4);
+  document.getElementById("gy").value = b2.toFixed(4);
+  // gd display stays informational
+}
 document.getElementById("btn-rot-fwd").addEventListener("click", () => {
-  const gd = parseFloat(document.getElementById("gd").value);
-  const gx = parseFloat(document.getElementById("gx").value);
-  const gy = parseFloat(document.getElementById("gy").value);
-  const [gx2, gy2, gd2] = rotateGamma(gx, gy, gd, +1);
-  document.getElementById("gx").value = gx2.toFixed(4);
-  document.getElementById("gy").value = gy2.toFixed(4);
-  document.getElementById("gd").value = gd2.toFixed(4);
+  rotateIPlane(+1);
   tickCount += 1;
   update();
 });
 document.getElementById("btn-rot-bwd").addEventListener("click", () => {
-  const gd = parseFloat(document.getElementById("gd").value);
-  const gx = parseFloat(document.getElementById("gx").value);
-  const gy = parseFloat(document.getElementById("gy").value);
-  const [gx2, gy2, gd2] = rotateGamma(gx, gy, gd, -1);
-  document.getElementById("gx").value = gx2.toFixed(4);
-  document.getElementById("gy").value = gy2.toFixed(4);
-  document.getElementById("gd").value = gd2.toFixed(4);
+  rotateIPlane(-1);
   tickCount -= 1;
   update();
 });
 document.getElementById("btn-zero").addEventListener("click", () => {
-  document.getElementById("gd").value = 0.05;
-  document.getElementById("gx").value = 0;
+  // Singular Sun: γ_I = 0 → fivefold concurrence at origin.
+  // Use small offset 0.05 to step OFF the singularity into one of the
+  // 10 generic Penrose tilings of the Z₁₀ orbit.
+  document.getElementById("gx").value = 0.05;
   document.getElementById("gy").value = 0;
+  document.getElementById("gd").value = 0;
   tickCount = 0;
   update();
 });
