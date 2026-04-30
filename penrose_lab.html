@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Penrose Cl(5) Lab — radius-10 patch</title>
+<script src="https://cdn.jsdelivr.net/gh/enkimute/ganja.js@master/ganja.js"></script>
+<style>
+  body { margin: 0; padding: 0; background: #f8f8f8; font-family: system-ui, sans-serif; color: #222; }
+  header { padding: 8px 14px; background: #eee; border-bottom: 1px solid #ccc; }
+  h1 { margin: 0; font-size: 14px; font-weight: 500; }
+  .info { font-size: 11px; color: #666; margin-top: 2px; }
+  .controls { padding: 8px 14px; background: #f4f4f4; border-bottom: 1px solid #ddd;
+              display: flex; gap: 14px; align-items: center; flex-wrap: wrap; font-size: 12px; }
+  .cgroup { display: flex; gap: 4px; align-items: center; }
+  label { color: #555; }
+  input[type=range] { width: 200px; }
+  .stat { font-family: 'Consolas','Monaco',monospace; font-size: 11px; color: #333; }
+  button { background: #ddd; border: 1px solid #999; padding: 4px 8px; cursor: pointer; font-size: 12px; }
+  button:hover { background: #ccc; }
+  #wrap { display: flex; justify-content: center; padding: 12px; }
+  svg { background: white; border: 1px solid #ddd; }
+  .legend { font-size: 10px; color: #777; margin-top: 4px; }
+  .swatch { display: inline-block; width: 12px; height: 12px; vertical-align: -2px; margin: 0 3px; border: 1px solid #888; }
+  #status { padding: 4px 14px; background: #f4f4f4; border-bottom: 1px solid #ddd; font-family: 'Consolas',monospace; font-size: 11px; color: #444; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Penrose Cl(5) Lab — radius-10 patch</h1>
+  <div class="info">
+    Mother lattice ℤ⁵, project to 2D perpendicular to body diagonal (1,1,1,1,1)/√5.
+    Cut window W = 3D rhombic icosidodecahedron in E⊥; γ ∈ E⊥ slides/rotates the cut window.
+    Patch grown by BFS through 5-cube edges between accepted Z⁵ vertices, capped at 2D physical radius 10.
+    Cl(5) rotor R = exp((π/10)·e₃e₄) ∈ Spin(5) advances the γ-rotation cycle clock.
+  </div>
+</header>
+
+<div class="controls">
+  <div class="cgroup"><label>γ_diag:</label><input type="range" id="gd" min="-1.118" max="1.118" step="0.005" value="0.05"><span class="stat" id="gd-val">0.050</span></div>
+  <div class="cgroup"><label>γ_x:</label><input type="range" id="gx" min="-1.118" max="1.118" step="0.005" value="0"><span class="stat" id="gx-val">0.000</span></div>
+  <div class="cgroup"><label>γ_y:</label><input type="range" id="gy" min="-1.118" max="1.118" step="0.005" value="0"><span class="stat" id="gy-val">0.000</span></div>
+  <button id="btn-rot-fwd">↻ R (π/5)</button>
+  <button id="btn-rot-bwd">↺ R⁻¹ (−π/5)</button>
+  <button id="btn-zero">γ ← (0.05, 0, 0)</button>
+  <span class="stat" id="cnt"></span>
+</div>
+
+<div id="status">
+  Cl(5) state: rotor tick = 0  |  R^0 = +1  |  γ angle in I-plane = 0°
+</div>
+
+<div id="wrap">
+  <svg id="plot" width="900" height="900" viewBox="-11 -11 22 22" preserveAspectRatio="xMidYMid meet">
+    <g id="g" transform="matrix(1 0 0 -1 0 0)">
+      <g id="g-rhombi"></g>
+      <g id="g-edges"></g>
+      <g id="g-verts"></g>
+      <g id="g-particles"></g>
+    </g>
+  </svg>
+  <div class="legend">
+    <span class="swatch" style="background:#cc6655"></span>thick rhombus (72°/108°)
+    <span class="swatch" style="background:#5577cc"></span>thin rhombus (36°/144°)
+  </div>
+</div>
+
+<script>
+"use strict";
+const NS = "http://www.w3.org/2000/svg";
+const SQRT_25 = Math.sqrt(2/5);
+const SQRT_15 = 1/Math.sqrt(5);
+const SQRT5 = Math.sqrt(5);
+const PHI = (1 + SQRT5)/2;
+const RADIUS_2D = 10.0;
+
+// ---- 5D → 2D physical and 5D → 3D perpendicular bases ----
+const B1 = [], B2 = [], B3 = [], B4 = [], B5 = [];
+for (let j = 0; j < 5; j++) {
+  B1.push(SQRT_25 * Math.cos(2*Math.PI*j/5));
+  B2.push(SQRT_25 * Math.sin(2*Math.PI*j/5));
+  B3.push(SQRT_25 * Math.cos(4*Math.PI*j/5));
+  B4.push(SQRT_25 * Math.sin(4*Math.PI*j/5));
+  B5.push(SQRT_15);
+}
+function project2D(v) {
+  let x = 0, y = 0;
+  for (let j = 0; j < 5; j++) { x += v[j]*B1[j]; y += v[j]*B2[j]; }
+  return [x, y];
+}
+function perp3(v) {
+  let p3 = 0, p4 = 0, p5 = 0;
+  for (let j = 0; j < 5; j++) { p3 += v[j]*B3[j]; p4 += v[j]*B4[j]; p5 += v[j]*B5[j]; }
+  return [p3, p4, p5];
+}
+
+// ---- Rhombic icosidodecahedron half-spaces ----
+const perp_e = [];
+for (let i = 0; i < 5; i++) {
+  const e = [0,0,0,0,0]; e[i] = 1; perp_e.push(perp3(e));
+}
+function cross(a,b){return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];}
+function dot3(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}
+function sub3(a,b){return [a[0]-b[0],a[1]-b[1],a[2]-b[2]];}
+function nrm3(a){return Math.sqrt(dot3(a,a));}
+const normals = [];
+for (let r = 0; r < 5; r++) for (let s = r+1; s < 5; s++) {
+  let n = cross(perp_e[r], perp_e[s]);
+  const m = nrm3(n); if (m < 1e-12) continue;
+  n = [n[0]/m, n[1]/m, n[2]/m];
+  normals.push(n); normals.push([-n[0],-n[1],-n[2]]);
+}
+// 32 unit-cube vertex perp-projections give the polyhedron extent
+const cubeVerts = [];
+for (let i = 0; i < 32; i++) {
+  const v = []; for (let k=0;k<5;k++) v.push((i>>k)&1 ? 0.5 : -0.5); cubeVerts.push(v);
+}
+const cubePerps = cubeVerts.map(perp3);
+const maxProj = normals.map(n => {
+  let mx = -Infinity;
+  for (const p of cubePerps) { const d = dot3(n,p); if (d>mx) mx=d; }
+  return mx;
+});
+function inCut(perp_v, gamma, tol=1e-7) {
+  const r = sub3(perp_v, gamma);
+  for (let i = 0; i < normals.length; i++) {
+    if (dot3(normals[i], r) > maxProj[i] + tol) return false;
+  }
+  return true;
+}
+
+// ---- BFS patch generator ----
+function generatePatch(gamma, maxR2D = RADIUS_2D) {
+  const accepted = [];
+  const acceptedKey = new Set();
+  const visited = new Set();
+  const queue = [];
+  const start = [0,0,0,0,0];
+  queue.push(start);
+  visited.add(start.join(','));
+  let head = 0;
+  while (head < queue.length) {
+    const v = queue[head++];
+    const xy = project2D(v);
+    if (xy[0]*xy[0] + xy[1]*xy[1] > maxR2D*maxR2D) continue;
+    const perp = perp3(v);
+    if (!inCut(perp, gamma)) continue;
+    accepted.push(v);
+    acceptedKey.add(v.join(','));
+    for (let i = 0; i < 5; i++) {
+      for (const dir of [-1, +1]) {
+        const next = v.slice();
+        next[i] += dir;
+        const key = next.join(',');
+        if (!visited.has(key)) { visited.add(key); queue.push(next); }
+      }
+    }
+  }
+  return { accepted, acceptedKey };
+}
+
+function findRhombi(accepted, acceptedKey) {
+  const rhombi = [];
+  for (const v of accepted) {
+    for (let r = 0; r < 5; r++) {
+      for (let s = r+1; s < 5; s++) {
+        const v_r = v.slice(); v_r[r] += 1;
+        const v_s = v.slice(); v_s[s] += 1;
+        const v_rs = v.slice(); v_rs[r] += 1; v_rs[s] += 1;
+        if (acceptedKey.has(v_r.join(',')) &&
+            acceptedKey.has(v_s.join(',')) &&
+            acceptedKey.has(v_rs.join(','))) {
+          const angDist = Math.min(Math.abs(r-s), 5-Math.abs(r-s));
+          rhombi.push({
+            corners: [v, v_r, v_rs, v_s],
+            isThick: angDist === 1,
+          });
+        }
+      }
+    }
+  }
+  return rhombi;
+}
+
+// ---- Cl(5) rotor via ganja.js (when loaded), else direct rotation ----
+let Cl5Rotor = null;
+function setupCl5() {
+  if (typeof Algebra === 'undefined') {
+    console.warn('ganja.js not loaded; falling back to direct rotation math.');
+    return;
+  }
+  // Algebra(5): basis e1..e5, signature (5,0,0). Bivectors include e3∧e4 ("e34").
+  // R = exp((π/10) e3 e4) = cos(π/10) + sin(π/10) e34, applied as γ' = R γ R^(-1).
+  Algebra(5, () => {
+    // Build a callable rotor function. ganja.js operator-overloaded code lives in this scope.
+    // Bivector e3∧e4 in ganja basis-blade order:
+    //   The 32 elements are indexed as: scalar, e1..e5, e12,e13,e14,e15,e23,e24,e25,e34,e35,e45,
+    //   e123..e12345. e34 is at index 11 (0-based) under standard ordering.
+    Cl5Rotor = function(gx, gy, gd, sign) {
+      // Vector γ in perp space; embed as e3*gx + e4*gy + e5*gd
+      const vec = 1e3 * gx + 1e4 * gy + 1e5 * gd;
+      const angle = sign * Math.PI / 10;  // half-angle for the rotor (rotation = 2*angle = π/5)
+      const B = 1e34;  // bivector e3∧e4
+      const R = Math.cos(angle) + Math.sin(angle) * B;
+      const Rinv = Math.cos(angle) - Math.sin(angle) * B;
+      const rotated = R * vec * Rinv;
+      // Extract e3, e4, e5 components (vector grade)
+      // ganja.js exposes them via array-indexed access; the order is determined by Algebra's basis names.
+      // The Element supports .Vector to get vector grade as array.
+      const arr = rotated.Vector ? rotated.Vector : null;
+      if (arr) {
+        // arr is [v_e1, v_e2, v_e3, v_e4, v_e5]
+        return [arr[2], arr[3], arr[4]];
+      }
+      // Fallback: read components by name (ganja extends Element with named accessors)
+      return [rotated.e3 || 0, rotated.e4 || 0, rotated.e5 || 0];
+    };
+    return Cl5Rotor;
+  });
+}
+setupCl5();
+
+function rotateGammaDirect(gx, gy, gd, sign=+1) {
+  const angle = sign * Math.PI / 5;
+  const c = Math.cos(angle), s = Math.sin(angle);
+  return [gx*c - gy*s, gx*s + gy*c, gd];
+}
+function rotateGamma(gx, gy, gd, sign=+1) {
+  if (Cl5Rotor) {
+    try { return Cl5Rotor(gx, gy, gd, sign); }
+    catch (e) { console.warn('Cl5 rotor failed, falling back:', e); return rotateGammaDirect(gx, gy, gd, sign); }
+  }
+  return rotateGammaDirect(gx, gy, gd, sign);
+}
+
+// ---- Render ----
+const rhombiGroup = document.getElementById("g-rhombi");
+const vertGroup = document.getElementById("g-verts");
+const particlesGroup = document.getElementById("g-particles");
+let tickCount = 0;
+
+function update() {
+  const gd = parseFloat(document.getElementById("gd").value);
+  const gx = parseFloat(document.getElementById("gx").value);
+  const gy = parseFloat(document.getElementById("gy").value);
+  document.getElementById("gd-val").textContent = gd.toFixed(3);
+  document.getElementById("gx-val").textContent = gx.toFixed(3);
+  document.getElementById("gy-val").textContent = gy.toFixed(3);
+  const gamma = [gx, gy, gd];
+  const t0 = performance.now();
+  const { accepted, acceptedKey } = generatePatch(gamma);
+  const rhombi = findRhombi(accepted, acceptedKey);
+  const t1 = performance.now();
+  rhombiGroup.innerHTML = "";
+  vertGroup.innerHTML = "";
+  let nThick = 0, nThin = 0;
+  for (const sq of rhombi) {
+    const corners = sq.corners.map(project2D);
+    const pts = corners.map(p => `${p[0]},${p[1]}`).join(" ");
+    const poly = document.createElementNS(NS, "polygon");
+    poly.setAttribute("points", pts);
+    poly.setAttribute("fill", sq.isThick ? "#cc6655" : "#5577cc");
+    poly.setAttribute("fill-opacity", "0.45");
+    poly.setAttribute("stroke", "#222");
+    poly.setAttribute("stroke-width", "0.02");
+    poly.setAttribute("stroke-linejoin", "round");
+    rhombiGroup.appendChild(poly);
+    if (sq.isThick) nThick++; else nThin++;
+  }
+  for (const v of accepted) {
+    const [x, y] = project2D(v);
+    const c = document.createElementNS(NS, "circle");
+    c.setAttribute("cx", x); c.setAttribute("cy", y);
+    c.setAttribute("r", 0.06);
+    c.setAttribute("fill", "#333");
+    vertGroup.appendChild(c);
+  }
+  const t2 = performance.now();
+  document.getElementById("cnt").textContent =
+    `verts=${accepted.length} rhombi=${rhombi.length} (T=${nThick}, t=${nThin}) | gen ${(t1-t0).toFixed(0)}ms render ${(t2-t1).toFixed(0)}ms | Cl(5): ${Cl5Rotor ? 'ganja' : 'direct'}`;
+  // Status bar
+  const angle = Math.atan2(gy, gx) * 180 / Math.PI;
+  const tickMod10 = ((tickCount % 10) + 10) % 10;
+  const tickMod20 = ((tickCount % 20) + 20) % 20;
+  const spinor = (tickMod20 === 0) ? "+1" : (tickMod20 === 10) ? "−1" : `partial`;
+  document.getElementById("status").textContent =
+    `Cl(5) state: rotor tick = ${tickCount} | mod-10 (config) = ${tickMod10} | mod-20 (Spin closure) = ${tickMod20} | R^${tickCount} = ${spinor} | γ angle in I-plane = ${angle.toFixed(1)}°`;
+}
+
+for (const id of ["gd", "gx", "gy"]) document.getElementById(id).addEventListener("input", () => { tickCount = 0; update(); });
+
+document.getElementById("btn-rot-fwd").addEventListener("click", () => {
+  const gd = parseFloat(document.getElementById("gd").value);
+  const gx = parseFloat(document.getElementById("gx").value);
+  const gy = parseFloat(document.getElementById("gy").value);
+  const [gx2, gy2, gd2] = rotateGamma(gx, gy, gd, +1);
+  document.getElementById("gx").value = gx2.toFixed(4);
+  document.getElementById("gy").value = gy2.toFixed(4);
+  document.getElementById("gd").value = gd2.toFixed(4);
+  tickCount += 1;
+  update();
+});
+document.getElementById("btn-rot-bwd").addEventListener("click", () => {
+  const gd = parseFloat(document.getElementById("gd").value);
+  const gx = parseFloat(document.getElementById("gx").value);
+  const gy = parseFloat(document.getElementById("gy").value);
+  const [gx2, gy2, gd2] = rotateGamma(gx, gy, gd, -1);
+  document.getElementById("gx").value = gx2.toFixed(4);
+  document.getElementById("gy").value = gy2.toFixed(4);
+  document.getElementById("gd").value = gd2.toFixed(4);
+  tickCount -= 1;
+  update();
+});
+document.getElementById("btn-zero").addEventListener("click", () => {
+  document.getElementById("gd").value = 0.05;
+  document.getElementById("gx").value = 0;
+  document.getElementById("gy").value = 0;
+  tickCount = 0;
+  update();
+});
+
+// Initial render
+update();
+</script>
+</body>
+</html>
