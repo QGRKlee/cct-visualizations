@@ -52,13 +52,14 @@
 </div>
 
 <div id="experiment" style="padding: 8px 14px; background: #f0f0f0; border-bottom: 1px solid #ccc; font-size: 12px;">
-  <strong>Two-particle savings experiment</strong> &nbsp;
-  <button id="btn-setup">Setup A &amp; B trajectories</button>
-  <button id="btn-sweep">Run sweep (89×89 = 7921 patterns)</button>
-  <button id="btn-show-high">show HIGH</button>
-  <button id="btn-show-low">show LOW</button>
+  <strong>Phason demo (single CE quasiparticle)</strong> &nbsp;
+  <button id="btn-setup">Setup phason</button>
+  <button id="btn-sweep" style="display:none;">Run sweep</button>
+  <button id="btn-show-high" style="display:none;">show HIGH</button>
+  <button id="btn-show-low" style="display:none;">show LOW</button>
+  <label><input type="checkbox" id="show-empire"> show empire halo at each tick</label>
   <span class="stat" id="exp-status">— not yet set up —</span>
-  <div id="histo" style="margin-top: 8px;"></div>
+  <div id="histo" style="margin-top: 8px; display:none;"></div>
 </div>
 
 <div id="wrap">
@@ -418,6 +419,11 @@ function computeEmpire(ce_xy, ce_perp) {
 }
 
 function setupParticles() {
+  // Single-phason demo. The CE quasiparticle propagates L→R via CE relocations,
+  // its internal cycle clock advances by π/5 per tick (mod-10 rotation),
+  // and its perpendicular displacement waves up/down with Fibonacci L/S amplitude
+  // synchronised to the rotation phase: y(t) = amp(t) · sin(2π·t/10).
+  // 20 ticks = 2 full mod-10 rotations = one full spin-2 4π closure.
   const gd = parseFloat(document.getElementById("gd").value);
   const gx = parseFloat(document.getElementById("gx").value);
   const gy = parseFloat(document.getElementById("gy").value);
@@ -426,18 +432,106 @@ function setupParticles() {
   cachedAccepted = accepted;
   cachedXys = accepted.map(project2D);
   cachedPerps = accepted.map(perp3);
-  const dataA = spiralTargets([-PARTICLE_DRIFT, 0], [PARTICLE_DRIFT, 0], M_PARTICLE, -1, 0);
-  const dataB = spiralTargets([PARTICLE_DRIFT, 0], [-PARTICLE_DRIFT, 0], M_PARTICLE, +1, 2);
-  particle_A_pool = snapToVertex(dataA.targets, cachedXys);
-  particle_B_pool = snapToVertex(dataB.targets, cachedXys);
+
+  const M = 20;
+  const startX = -8, endX = +8;
+  const word = fibWord(M, 0);
+  const targets = [];
+  for (let t = 0; t < M; t++) {
+    const s = M > 1 ? t/(M-1) : 0;
+    const cx = (1-s)*startX + s*endX;       // linear x propagation
+    const phase = 2*Math.PI*t/10;            // mod-10 rotation phase
+    const amp = (word[t] === 'L') ? L_AMP : S_AMP;
+    const cy = amp * Math.sin(phase);        // wave: up/down with mod-10 period, Fib-modulated amplitude
+    targets.push([cx, cy]);
+  }
+  // Snap each target to nearest accepted Penrose vertex (CE relocation)
+  const used = new Set();
+  particle_A_pool = [];
+  for (const t of targets) {
+    let best = -1, bestD = Infinity;
+    for (let i = 0; i < cachedXys.length; i++) {
+      if (used.has(i)) continue;
+      const d = (cachedXys[i][0]-t[0])**2 + (cachedXys[i][1]-t[1])**2;
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    if (best >= 0) { particle_A_pool.push(best); used.add(best); }
+  }
+  particle_B_pool = [];
   particle_A_empires = particle_A_pool.map(idx => computeEmpire(cachedXys[idx], cachedPerps[idx]));
-  particle_B_empires = particle_B_pool.map(idx => computeEmpire(cachedXys[idx], cachedPerps[idx]));
-  renderParticles();
+  particle_B_empires = [];
+  renderPhason(word);
   const avgA = particle_A_empires.reduce((a,b)=>a+b.size,0)/particle_A_empires.length;
-  const avgB = particle_B_empires.reduce((a,b)=>a+b.size,0)/particle_B_empires.length;
   document.getElementById("exp-status").textContent =
-    `A pool ${particle_A_pool.length} (Fib ${dataA.word}), B pool ${particle_B_pool.length} (Fib ${dataB.word}) | empire avg sizes A=${avgA.toFixed(1)}, B=${avgB.toFixed(1)}`;
+    `Phason: M=${M} CE relocations | Fib word ${word} | mod-10 rotation (full spin-2 closure at tick 20) | x = ${startX}→${endX} | empire avg = ${avgA.toFixed(1)} verts`;
 }
+
+function renderPhason(word) {
+  particlesGroup.innerHTML = "";
+  const showEmpire = document.getElementById("show-empire") && document.getElementById("show-empire").checked;
+  // Optional empire halo at each tick (faint orange dots)
+  if (showEmpire) {
+    for (let k = 0; k < particle_A_pool.length; k++) {
+      for (const empIdx of particle_A_empires[k]) {
+        if (empIdx === particle_A_pool[k]) continue;
+        const [ex, ey] = cachedXys[empIdx];
+        const c = document.createElementNS(NS, "circle");
+        c.setAttribute("cx", ex); c.setAttribute("cy", ey); c.setAttribute("r", 0.10);
+        c.setAttribute("fill", "#ffaa44"); c.setAttribute("opacity", "0.18");
+        particlesGroup.appendChild(c);
+      }
+    }
+  }
+  // Trajectory line (CE relocations as a connected path, L→R)
+  for (let k = 0; k < particle_A_pool.length-1; k++) {
+    const [x1, y1] = cachedXys[particle_A_pool[k]];
+    const [x2, y2] = cachedXys[particle_A_pool[k+1]];
+    const ln = document.createElementNS(NS, "line");
+    ln.setAttribute("x1", x1); ln.setAttribute("y1", y1);
+    ln.setAttribute("x2", x2); ln.setAttribute("y2", y2);
+    ln.setAttribute("stroke", "#cc3300"); ln.setAttribute("stroke-width", "0.05");
+    ln.setAttribute("opacity", "0.6");
+    particlesGroup.appendChild(ln);
+  }
+  // CE markers + rotation-phase tick + tick number
+  for (let k = 0; k < particle_A_pool.length; k++) {
+    const idx = particle_A_pool[k];
+    const [x, y] = cachedXys[idx];
+    // CE body — color by Fib letter (L = solid red, S = lighter red/orange)
+    const isL = word && word[k] === 'L';
+    const c = document.createElementNS(NS, "circle");
+    c.setAttribute("cx", x); c.setAttribute("cy", y);
+    c.setAttribute("r", 0.26);
+    c.setAttribute("fill", isL ? "#cc0000" : "#ee8844");
+    c.setAttribute("stroke", "black"); c.setAttribute("stroke-width", "0.04");
+    c.setAttribute("opacity", "0.9");
+    particlesGroup.appendChild(c);
+    // Rotation-phase tick (yellow radial line showing internal cycle-clock orientation)
+    const phase = 2*Math.PI*k/10;
+    const tipX = x + 0.45*Math.cos(phase);
+    const tipY = y + 0.45*Math.sin(phase);
+    const tick = document.createElementNS(NS, "line");
+    tick.setAttribute("x1", x); tick.setAttribute("y1", y);
+    tick.setAttribute("x2", tipX); tick.setAttribute("y2", tipY);
+    tick.setAttribute("stroke", "#ffdd00"); tick.setAttribute("stroke-width", "0.07");
+    particlesGroup.appendChild(tick);
+    // Tick number label (text inside circle)
+    const t = document.createElementNS(NS, "text");
+    t.setAttribute("x", x); t.setAttribute("y", -y + 0.10);
+    t.setAttribute("text-anchor", "middle");
+    t.setAttribute("font-size", "0.30");
+    t.setAttribute("fill", "white");
+    t.setAttribute("font-weight", "bold");
+    t.setAttribute("transform", "matrix(1 0 0 -1 0 0)");
+    t.textContent = (k + 1);
+    particlesGroup.appendChild(t);
+  }
+}
+
+function renderParticles(ordA = null, ordB = null) {
+  // Two-particle render kept for later when we add B back. For now, falls
+  // through to renderPhason if called without B set up.
+  if (particle_B_pool.length === 0) { renderPhason(); return; }
 
 function starPts(cx, cy, R, r, n) {
   let s = "";
@@ -611,6 +705,12 @@ document.getElementById("btn-show-high").addEventListener("click", () => {
 });
 document.getElementById("btn-show-low").addEventListener("click", () => {
   if (sweepResults.length > 0) renderParticles(sweepResults[sweepResults.length-1].ord_A, sweepResults[sweepResults.length-1].ord_B);
+});
+document.getElementById("show-empire").addEventListener("change", () => {
+  if (particle_A_pool.length > 0) {
+    const word = fibWord(particle_A_pool.length, 0);
+    renderPhason(word);
+  }
 });
 </script>
 </body>
