@@ -52,13 +52,18 @@
 </div>
 
 <div id="experiment" style="padding: 8px 14px; background: #f0f0f0; border-bottom: 1px solid #ccc; font-size: 12px;">
-  <strong>Phason demo (single CE quasiparticle)</strong> &nbsp;
-  <button id="btn-setup">Setup phason</button>
+  <strong>Phason animation</strong> &nbsp;
+  <button id="btn-play">▶ play</button>
+  <button id="btn-stop">⏸ stop</button>
+  <button id="btn-step">step ▶▏</button>
+  <button id="btn-reset-anim">⏮ reset</button>
+  <label>fps:<input type="number" id="fps" value="3" min="1" max="20" style="width:40px;"></label>
+  <span class="stat" id="exp-status">tick 0 | each frame is a Φ²-inflation tiling on the Φ¹ dot substrate; cartwheel CE position cycles via γ-motion</span>
+  <button id="btn-setup" style="display:none;">setup</button>
   <button id="btn-sweep" style="display:none;">Run sweep</button>
   <button id="btn-show-high" style="display:none;">show HIGH</button>
   <button id="btn-show-low" style="display:none;">show LOW</button>
-  <label><input type="checkbox" id="show-empire"> show empire halo at each tick</label>
-  <span class="stat" id="exp-status">— not yet set up —</span>
+  <input type="checkbox" id="show-empire" style="display:none;">
   <div id="histo" style="margin-top: 8px; display:none;"></div>
 </div>
 
@@ -707,6 +712,53 @@ document.getElementById("show-empire").addEventListener("change", () => {
     renderPhason(word);
   }
 });
+
+// ---- Phason animation: cycle γ frame-by-frame; each frame = Φ² inflation tiling ----
+let animTimer = null, animTick = 0;
+const ANIM_M = 20;            // total ticks (= 2 mod-10 cycles = full spin-2 4π closure)
+const ANIM_RADIUS_I = 0.42;   // γ orbit radius in I-plane (controls cartwheel visibility)
+const ANIM_DRIFT_D = 0.025;   // γ_d shift per tick (phason translation in body-diag perp)
+const ANIM_FIB_MOD = 0.20;    // Fib L/S amplitude modulation of orbit radius
+
+function animFrame() {
+  // Cl(5) rotor: γ rotates by π/5 per tick in I-plane.
+  // Fibonacci L/S modulates the I-plane radius (wave amplitude).
+  // γ_d translates linearly per tick (phason propagation along body-diag perp).
+  const word = fibWord(ANIM_M, 0);
+  const t = animTick;
+  const phase = t * Math.PI / 5;       // mod-10 rotation phase
+  const ampMul = (word[t % word.length] === "L") ? 1.0 : 1.0 / PHI;
+  const r = ANIM_RADIUS_I * (1 - ANIM_FIB_MOD + ANIM_FIB_MOD * ampMul * 2);
+  const gx = r * Math.cos(phase);
+  const gy = r * Math.sin(phase);
+  const gd = ANIM_DRIFT_D * (t - ANIM_M / 2);  // start negative, drift through zero, end positive
+  document.getElementById("gx").value = gx.toFixed(4);
+  document.getElementById("gy").value = gy.toFixed(4);
+  document.getElementById("gd").value = gd.toFixed(4);
+  // Force rhombi visible during animation
+  document.getElementById("show-rhombi").checked = true;
+  // Clear the spiral-marker overlay (we don't want it visible during animation)
+  particlesGroup.innerHTML = "";
+  particle_A_pool = [];
+  particle_B_pool = [];
+  update();
+  document.getElementById("exp-status").textContent =
+    `tick ${t}/${ANIM_M-1} | mod-10 phase = ${(t%10)*36}° | Fib letter = ${word[t%word.length]} | γ = (${gx.toFixed(3)},${gy.toFixed(3)},${gd.toFixed(3)})`;
+  animTick = (animTick + 1) % ANIM_M;
+}
+
+function startAnim() {
+  if (animTimer) return;
+  const fps = parseFloat(document.getElementById("fps").value) || 3;
+  animTimer = setInterval(animFrame, 1000 / fps);
+}
+function stopAnim() { if (animTimer) { clearInterval(animTimer); animTimer = null; } }
+function stepAnim() { stopAnim(); animFrame(); }
+function resetAnim() { stopAnim(); animTick = 0; animFrame(); }
+document.getElementById("btn-play").addEventListener("click", startAnim);
+document.getElementById("btn-stop").addEventListener("click", stopAnim);
+document.getElementById("btn-step").addEventListener("click", stepAnim);
+document.getElementById("btn-reset-anim").addEventListener("click", resetAnim);
 </script>
 </body>
 </html>
