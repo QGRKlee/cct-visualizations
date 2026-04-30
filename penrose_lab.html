@@ -43,6 +43,7 @@
   <button id="btn-rot-fwd">↻ R (π/5)</button>
   <button id="btn-rot-bwd">↺ R⁻¹ (−π/5)</button>
   <button id="btn-zero">γ ← (0.05, 0, 0)</button>
+  <label><input type="checkbox" id="show-rhombi"> show inflation (rhombi)</label>
   <span class="stat" id="cnt"></span>
 </div>
 
@@ -254,18 +255,23 @@ function update() {
   rhombiGroup.innerHTML = "";
   vertGroup.innerHTML = "";
   let nThick = 0, nThin = 0;
-  for (const sq of rhombi) {
-    const corners = sq.corners.map(project2D);
-    const pts = corners.map(p => `${p[0]},${p[1]}`).join(" ");
-    const poly = document.createElementNS(NS, "polygon");
-    poly.setAttribute("points", pts);
-    poly.setAttribute("fill", sq.isThick ? "#cc6655" : "#5577cc");
-    poly.setAttribute("fill-opacity", "0.45");
-    poly.setAttribute("stroke", "#222");
-    poly.setAttribute("stroke-width", "0.02");
-    poly.setAttribute("stroke-linejoin", "round");
-    rhombiGroup.appendChild(poly);
-    if (sq.isThick) nThick++; else nThin++;
+  const showRhombi = document.getElementById("show-rhombi").checked;
+  if (showRhombi) {
+    for (const sq of rhombi) {
+      const corners = sq.corners.map(project2D);
+      const pts = corners.map(p => `${p[0]},${p[1]}`).join(" ");
+      const poly = document.createElementNS(NS, "polygon");
+      poly.setAttribute("points", pts);
+      poly.setAttribute("fill", sq.isThick ? "#cc6655" : "#5577cc");
+      poly.setAttribute("fill-opacity", "0.45");
+      poly.setAttribute("stroke", "#222");
+      poly.setAttribute("stroke-width", "0.02");
+      poly.setAttribute("stroke-linejoin", "round");
+      rhombiGroup.appendChild(poly);
+      if (sq.isThick) nThick++; else nThin++;
+    }
+  } else {
+    for (const sq of rhombi) { if (sq.isThick) nThick++; else nThin++; }
   }
   for (const v of accepted) {
     const [x, y] = project2D(v);
@@ -288,6 +294,7 @@ function update() {
 }
 
 for (const id of ["gd", "gx", "gy"]) document.getElementById(id).addEventListener("input", () => { tickCount = 0; update(); });
+document.getElementById("show-rhombi").addEventListener("change", update);
 
 document.getElementById("btn-rot-fwd").addEventListener("click", () => {
   const gd = parseFloat(document.getElementById("gd").value);
