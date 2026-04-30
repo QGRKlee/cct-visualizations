@@ -100,68 +100,90 @@ for (let j = 0; j < 5; j++) {
   B4.push(SQRT_25 * Math.sin(4*Math.PI*j/5));
   B5.push(SQRT_15);
 }
+// ---- Canonical Penrose cut-and-project (after gglouser/cut-and-project-tiling) ----
+// 10 check axes from triples (i,j,k), each a 5D vector with 3 nonzero components
+// perpendicular to (B1,B2) projected onto the (i,j,k) coordinate-3-subspace.
+// A vertex λ ∈ Z^5 is accepted iff for every check axis a:
+//     min < λ·a ≤ max
+// where min and max are computed from the 32 unit-cube vertices SHIFTED BY the
+// 5D offset vector γ ∈ R^5. Default γ = (0.3, 0.3, 0.3, 0.3, 0.3) → Penrose Sun.
+const checkAxes = [];
+for (let i = 0; i < 3; i++) for (let j = i+1; j < 4; j++) for (let k = j+1; k < 5; k++) {
+  const a = [0,0,0,0,0];
+  a[i] = B1[k]*B2[j] - B1[j]*B2[k];
+  a[j] = B1[i]*B2[k] - B1[k]*B2[i];
+  a[k] = B1[j]*B2[i] - B1[i]*B2[j];
+  const m = Math.hypot(a[i], a[j], a[k]);
+  if (m > 1e-12) { a[i]/=m; a[j]/=m; a[k]/=m; checkAxes.push(a); }
+}
+// 5D offset (we vary just one scalar γ for symmetric Penrose; offset = (γ,γ,γ,γ,γ))
+let currentOffset = [0.3, 0.3, 0.3, 0.3, 0.3];
+let checkMin = [], checkMax = [];
+function setupCheckBounds() {
+  // 32 cube vertices SHIFTED BY currentOffset
+  const cubeVerts = [];
+  for (let i = 0; i < 32; i++) {
+    const cv = [];
+    for (let k = 0; k < 5; k++) cv.push(((i>>k)&1 ? 0.5 : -0.5) + currentOffset[k]);
+    cubeVerts.push(cv);
+  }
+  checkMin = []; checkMax = [];
+  for (const a of checkAxes) {
+    let mn = Infinity, mx = -Infinity;
+    for (const cv of cubeVerts) {
+      let d = 0; for (let k=0;k<5;k++) d += cv[k]*a[k];
+      if (d < mn) mn = d;
+      if (d > mx) mx = d;
+    }
+    checkMin.push(mn); checkMax.push(mx);
+  }
+}
+const CUT_EPS = 1e-9;
+function inCut(lambda) {
+  for (let i = 0; i < checkAxes.length; i++) {
+    const a = checkAxes[i];
+    let d = 0; for (let k=0;k<5;k++) d += lambda[k]*a[k];
+    if (d - checkMin[i] <= CUT_EPS) return false;
+    if (checkMax[i] - d < -CUT_EPS) return false;
+  }
+  return true;
+}
 function project2D(v) {
   let x = 0, y = 0;
-  for (let j = 0; j < 5; j++) { x += v[j]*B1[j]; y += v[j]*B2[j]; }
+  for (let j = 0; j < 5; j++) {
+    const d = v[j] - currentOffset[j];
+    x += d*B1[j]; y += d*B2[j];
+  }
   return [x, y];
 }
 function perp3(v) {
+  // Kept for legacy callers (empire computation, etc); offset NOT subtracted.
   let p3 = 0, p4 = 0, p5 = 0;
   for (let j = 0; j < 5; j++) { p3 += v[j]*B3[j]; p4 += v[j]*B4[j]; p5 += v[j]*B5[j]; }
   return [p3, p4, p5];
 }
 
-// ---- Rhombic icosidodecahedron half-spaces ----
-const perp_e = [];
-for (let i = 0; i < 5; i++) {
-  const e = [0,0,0,0,0]; e[i] = 1; perp_e.push(perp3(e));
-}
-function cross(a,b){return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];}
-function dot3(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}
-function sub3(a,b){return [a[0]-b[0],a[1]-b[1],a[2]-b[2]];}
-function nrm3(a){return Math.sqrt(dot3(a,a));}
-const normals = [];
-for (let r = 0; r < 5; r++) for (let s = r+1; s < 5; s++) {
-  let n = cross(perp_e[r], perp_e[s]);
-  const m = nrm3(n); if (m < 1e-12) continue;
-  n = [n[0]/m, n[1]/m, n[2]/m];
-  normals.push(n); normals.push([-n[0],-n[1],-n[2]]);
-}
-// 32 unit-cube vertex perp-projections give the polyhedron extent
-const cubeVerts = [];
-for (let i = 0; i < 32; i++) {
-  const v = []; for (let k=0;k<5;k++) v.push((i>>k)&1 ? 0.5 : -0.5); cubeVerts.push(v);
-}
-const cubePerps = cubeVerts.map(perp3);
-const maxProj = normals.map(n => {
-  let mx = -Infinity;
-  for (const p of cubePerps) { const d = dot3(n,p); if (d>mx) mx=d; }
-  return mx;
-});
-function inCut(perp_v, gamma, tol=1e-7) {
-  const r = sub3(perp_v, gamma);
-  for (let i = 0; i < normals.length; i++) {
-    if (dot3(normals[i], r) > maxProj[i] + tol) return false;
-  }
-  return true;
-}
-
-// ---- BFS patch generator ----
-function generatePatch(gamma, maxR2D = RADIUS_2D) {
+// ---- BFS patch generator (canonical) ----
+function generatePatch(_unused, maxR2D = RADIUS_2D) {
+  setupCheckBounds();   // depends on currentOffset
   const accepted = [];
   const acceptedKey = new Set();
   const visited = new Set();
   const queue = [];
-  const start = [0,0,0,0,0];
-  queue.push(start);
-  visited.add(start.join(','));
+  // Seed with all 32 corners of the unit hypercube containing currentOffset
+  const startCube = currentOffset.map(Math.floor);
+  for (let mask = 0; mask < 32; mask++) {
+    const v = startCube.slice();
+    for (let k = 0; k < 5; k++) v[k] += (mask>>k)&1;
+    const key = v.join(',');
+    if (!visited.has(key)) { visited.add(key); queue.push(v); }
+  }
   let head = 0;
   while (head < queue.length) {
     const v = queue[head++];
     const xy = project2D(v);
     if (xy[0]*xy[0] + xy[1]*xy[1] > maxR2D*maxR2D) continue;
-    const perp = perp3(v);
-    if (!inCut(perp, gamma)) continue;
+    if (!inCut(v)) continue;
     accepted.push(v);
     acceptedKey.add(v.join(','));
     for (let i = 0; i < 5; i++) {
@@ -257,15 +279,18 @@ const particlesGroup = document.getElementById("g-particles");
 let tickCount = 0;
 
 function update() {
+  // Three sliders now drive 5D offset components 2, 3, 4 (asymmetric)
+  // Components 0, 1 remain at 0.3 (uniform Sun seed). All-uniform γ=0.3 = canonical Sun.
   const gd = parseFloat(document.getElementById("gd").value);
   const gx = parseFloat(document.getElementById("gx").value);
   const gy = parseFloat(document.getElementById("gy").value);
   document.getElementById("gd-val").textContent = gd.toFixed(3);
   document.getElementById("gx-val").textContent = gx.toFixed(3);
   document.getElementById("gy-val").textContent = gy.toFixed(3);
-  const gamma = [gx, gy, gd];
+  // Map: (gx, gy, gd) → offset components (3, 4, 2). Add 0.3 base for symmetric Penrose.
+  currentOffset = [0.3, 0.3, 0.3 + gd, 0.3 + gx, 0.3 + gy];
   const t0 = performance.now();
-  const { accepted, acceptedKey } = generatePatch(gamma);
+  const { accepted, acceptedKey } = generatePatch();
   const rhombi = findRhombi(accepted, acceptedKey);
   const t1 = performance.now();
   rhombiGroup.innerHTML = "";
