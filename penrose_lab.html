@@ -528,11 +528,6 @@ function renderPhason(word) {
   }
 }
 
-function renderParticles(ordA = null, ordB = null) {
-  // Two-particle render kept for later when we add B back. For now, falls
-  // through to renderPhason if called without B set up.
-  if (particle_B_pool.length === 0) { renderPhason(); return; }
-
 function starPts(cx, cy, R, r, n) {
   let s = "";
   for (let i = 0; i < 2*n; i++) {
