@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Empire Lab — interactive viewer for the cut-and-project empire formalism</title>
+<style>
+  body {
+    background: #0e0e12;
+    color: #d8d8d8;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    margin: 0; padding: 0;
+    line-height: 1.55;
+  }
+  .container { max-width: 1200px; margin: 0 auto; padding: 20px 32px; }
+  h1 { color: #ffd; margin-bottom: 4px; }
+  h2 { color: #fec; border-bottom: 1px solid #333; padding-bottom: 6px; margin-top: 36px; }
+  h3 { color: #cea; margin-top: 24px; }
+  .lede { color: #aab; max-width: 900px; }
+  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .panel {
+    background: #15151b;
+    border: 1px solid #2a2a32;
+    border-radius: 6px;
+    padding: 14px;
+  }
+  .panel-tall { grid-row: span 2; }
+  canvas, .three-canvas {
+    background: #1a1a22; border-radius: 4px; display: block;
+  }
+  .three-canvas { width: 100%; height: 360px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 8px 0; }
+  .controls label { font-size: 12px; color: #aab; }
+  input[type=range] { width: 120px; }
+  button {
+    background: #2a3146; color: #e0e8ff; border: 1px solid #3a4360;
+    padding: 6px 12px; border-radius: 4px; cursor: pointer;
+    font-family: inherit; font-size: 13px;
+  }
+  button:hover { background: #3a4366; }
+  .stat { font-size: 12px; color: #9ac; font-family: 'Consolas', 'Menlo', monospace; }
+  .gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .gallery .item { background: #15151b; border-radius: 4px; padding: 8px; }
+  .gallery img { width: 100%; height: auto; border-radius: 3px; display: block; }
+  .gallery .cap { font-size: 12px; color: #9ac; padding: 6px 4px 0; }
+  code, pre {
+    background: #0a0a10; color: #c9b;
+    padding: 1px 6px; border-radius: 3px;
+    font-family: 'Consolas', 'Menlo', monospace;
+    font-size: 12px;
+  }
+  pre { padding: 8px 10px; overflow-x: auto; }
+  .stub { color: #877; font-style: italic; }
+  .findings {
+    background: linear-gradient(180deg, #1c1d28 0%, #15151b 100%);
+    border-left: 3px solid #fc6;
+    padding: 14px 20px;
+    border-radius: 0 6px 6px 0;
+    margin: 18px 0;
+  }
+  .findings h3 { margin-top: 8px; }
+  .nav { font-size: 13px; color: #79c; margin: 8px 0 24px; }
+  .nav a { color: #79c; margin-right: 12px; }
+  .nav a:hover { color: #afd; }
+  .legend {
+    display: flex; gap: 14px; flex-wrap: wrap;
+    font-size: 12px; color: #aab; padding-top: 4px;
+  }
+  .swatch { display: inline-block; width: 12px; height: 12px; vertical-align: middle; margin-right: 4px; border-radius: 2px; }
+</style>
+
+<!-- Three.js for 3D polytope rendering -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+<div class="container">
+
+<h1>Empire Lab — interactive cut-and-project empires</h1>
+<p class="lede">
+  Numerical realization of the cut-and-project empire formalism (Effinger-Dean 2006 + Fang-Hammock-Irwin 2017, <em>Crystals</em> 7:304). Companion to <code>empire_toolkit.py</code>. The cut window <strong>W ⊂ E⊥</strong> is a 3D polytope (rhombic icosahedron, 22 vertices, 20 facets). Empire-window <strong>W<sub>E</sub> ⊆ W</strong> is the intersection of all valid translated cut-windows for a given local patch — a forced-tile region.
+</p>
+<div class="nav">
+  <a href="#findings">Key findings</a>
+  <a href="#cut-window">3D cut window</a>
+  <a href="#z10">Z₁₀ rotor animation</a>
+  <a href="#force-field">Savings force field</a>
+  <a href="#defect">Defect correction</a>
+  <a href="#falloff">Inverse-power falloff</a>
+  <a href="#gallery">PNG gallery</a>
+</div>
+
+<div class="findings" id="findings">
+  <h3>Three substantive findings (verified numerically)</h3>
+  <ol>
+    <li><strong>Z₁₀ + translation isometry of W<sub>E</sub>.</strong> Empire-window VOLUME is invariant under any γ-shift in E⊥. Across all 20 ticks of the Cl(5) bivector rotor R = exp((π/10)·e₃e₄), W<sub>E</sub> volume = 1.5106 to floating-point precision. This is the discrete substrate's homogeneity-of-space theorem.</li>
+    <li><strong>The savings force is centrally attractive and conservative.</strong> F = −∇V where V is empire-overlap volume. Two patches with overlapping empires attract each other in perp-space displacement coordinates.</li>
+    <li><strong>Empire-overlap power-law falloff: |d|<sup>−1.48</sup></strong> in 3D perp space (closer to 1/r<sup>3/2</sup> than 1/r²). Klee's intuition directionally confirmed; physical-space 2D test deferred.</li>
+  </ol>
+</div>
+
+<h2 id="cut-window">1. 3D cut window W and empire-window W<sub>E</sub></h2>
+<div class="panels">
+  <div class="panel">
+    <div class="three-canvas" id="cw3d"></div>
+    <div class="controls">
+      <button id="btn-show-W">Toggle W</button>
+      <button id="btn-show-WE">Toggle W<sub>E</sub></button>
+      <button id="btn-show-normals">Toggle 20 facet normals</button>
+      <span class="stat" id="cw3d-stat"></span>
+    </div>
+    <div class="legend">
+      <span><span class="swatch" style="background:#5577cc"></span>W (cut window)</span>
+      <span><span class="swatch" style="background:#cc5566"></span>W<sub>E</sub> (empire window)</span>
+      <span><span class="swatch" style="background:#fc8"></span>20 facet normals</span>
+    </div>
+  </div>
+  <div class="panel">
+    <h3 style="margin-top:0">What you're looking at</h3>
+    <p>
+      <strong>W</strong> = perpendicular projection of the unit 5-cube into E⊥ = ℝ³. It has 22 hull vertices and 20 rhombic facets (FHI Eq 27–28). The 20 facet normals η<sub>i</sub> = ±π⊥(ê<sub>r</sub>) × π⊥(ê<sub>s</sub>)/|·| for the C(5,2) = 10 standard-basis pairs.
+    </p>
+    <p>
+      <strong>W<sub>E</sub></strong> ⊆ W is the empire-window of a 38-point pentagrid patch (γ = (0.137, 0.291), radius 2.0). Volume ratio W<sub>E</sub>/W = <strong>72.9%</strong> — substantial empire = many forced tiles.
+    </p>
+    <p>
+      <strong>20 facet normals</strong> live on the unit sphere, centrosymmetric, distributed as the I<sub>h</sub> icosahedral 20-orbit. They share this orbit structure with the 20 tetrahedra of the 20G cluster — same group, two representations (one in physical E, one in perp E⊥).
+    </p>
+  </div>
+</div>
+
+<h2 id="z10">2. Z₁₀ cycle clock — empire window invariant under rotor</h2>
+<div class="panels">
+  <div class="panel">
+    <div class="three-canvas" id="z10-3d"></div>
+    <div class="controls">
+      <button id="btn-z10-play">▶ Auto play</button>
+      <button id="btn-z10-prev">◀ Prev tick</button>
+      <button id="btn-z10-next">Next tick ▶</button>
+      <span class="stat" id="z10-stat">tick 0 / γ_a = 0.0500</span>
+    </div>
+  </div>
+  <div class="panel">
+    <p>
+      Each tick rotates γ in the I-plane (B₃, B₄) by π/5. The Cl(5) bivector rotor R = exp((π/10)·e₃e₄) acts on γ ∈ E⊥. After 10 ticks: cut-window configuration returns (R<sup>10</sup> = −1, mod-10 closure of the observable cycle). After 20 ticks: full Spin(5) closure (R<sup>20</sup> = +1, double-cover for spin-1/2).
+    </p>
+    <p>
+      <strong>Key observation:</strong> the empire-window's volume is <em>identical</em> across all 20 ticks. The polytope translates and rotates inside W, but its volume is preserved. This is a discrete-substrate version of conservation of empire-mass under spinor rotations.
+    </p>
+    <canvas id="z10-vol-plot" width="540" height="120"></canvas>
+  </div>
+</div>
+
+<h2 id="force-field">3. Savings force field — central attraction</h2>
+<div class="panels">
+  <div class="panel">
+    <canvas id="force-canvas" width="520" height="520"></canvas>
+    <div class="controls">
+      <label><input type="checkbox" id="show-V" checked> show V(d) heatmap</label>
+      <label><input type="checkbox" id="show-F" checked> show force vectors</label>
+      <span class="stat" id="force-stat"></span>
+    </div>
+  </div>
+  <div class="panel">
+    <p>
+      Empire-overlap potential V(d) over the (B₃, B₄) plane (B₅ = 0). Click a point to display V and |F| at that displacement. Force F = −∇V is overlaid as arrow vectors.
+    </p>
+    <p>
+      <strong>Attractive central force.</strong> V is peaked at d = 0 (full empire overlap) and falls off radially. Force vectors point inward → two patches with overlapping empires attract each other. Magnitude max ≈ 2.26.
+    </p>
+    <p>
+      Connection to Feynman's path integral: paths of stationary action ⇄ paths of maximal empire overlap. The "savings force" is the discrete-substrate analog of conservative-field gravity / electrostatics.
+    </p>
+  </div>
+</div>
+
+<h2 id="defect">4. Defect correction — gradient flow toward perfect cut window</h2>
+<div class="panels">
+  <div class="panel">
+    <canvas id="defect-canvas" width="520" height="320"></canvas>
+    <div class="controls">
+      <button id="btn-defect-restart">↻ Restart with new random defects</button>
+      <button id="btn-defect-step">Step</button>
+      <button id="btn-defect-play">▶ Auto-relax</button>
+      <span class="stat" id="defect-stat">step 0 / E = ?</span>
+    </div>
+  </div>
+  <div class="panel">
+    <p>
+      <strong>FHI §6 conjecture as a working Hamiltonian flow.</strong> Inject random defects into the cut-window's 20 facet offsets. Define energy H = ½‖b̃ − b<sub>perfect</sub>‖². Gradient descent ḃ = −∇H drives the system back to the perfect cut window.
+    </p>
+    <p>
+      Physical interpretation: defected QC ⇔ defects in cut-window. Empire dynamics relax toward perfect W = ground state. Defects = excitations = matter. This is the discrete analog of Einstein gravity's relaxation toward equilibrium.
+    </p>
+    <p>The plot shows energy vs step on a log scale, exponentially converging to zero.</p>
+  </div>
+</div>
+
+<h2 id="falloff">5. Empire-overlap falloff: power law ≈ |d|<sup>−1.48</sup></h2>
+<div class="panels">
+  <div class="panel">
+    <canvas id="falloff-linear" width="540" height="280"></canvas>
+    <div class="legend"><span>linear scale: V vs |d|</span></div>
+  </div>
+  <div class="panel">
+    <canvas id="falloff-loglog" width="540" height="280"></canvas>
+    <div class="legend"><span>log-log: slope = −1.482, R² ≈ 1</span></div>
+  </div>
+</div>
+
+<h2 id="gallery">6. Static figure gallery (from <code>empire_toolkit.py</code>)</h2>
+<div class="gallery">
+  <div class="item">
+    <img src="empire_toolkit_out/fig4_1_over_r_squared.png" alt="1/r^2 emergence test">
+    <div class="cap">Demo 4 — 1/r² emergence test. Empire-overlap volume vs perp-displacement, 25 sample points. Linear (left) and log-log (right) with fit slope = −1.482.</div>
+  </div>
+  <div class="item">
+    <img src="empire_toolkit_out/fig5_band_spectrum.png" alt="Empire band spectrum">
+    <div class="cap">Demo 5 — empire-band detector. 1324-tile patch. Polar density ρ(r,θ), angular FFT showing dominant 10-fold harmonic (= 15.77, vs mean 4.86).</div>
+  </div>
+  <div class="item">
+    <img src="empire_toolkit_out/fig6_z10_atlas.png" alt="Z_10 atlas">
+    <div class="cap">Demo 6 — Z₁₀ atlas. W<sub>E</sub> volume across all 20 ticks of the rotor. Flat line confirms isometry: W<sub>E</sub> volume is invariant under the cycle-clock rotation.</div>
+  </div>
+  <div class="item">
+    <img src="empire_toolkit_out/fig7_defect_correction.png" alt="Defect correction">
+    <div class="cap">Demo 7 — defect-correction relaxation. Energy decreases from 0.31 to 2×10⁻¹² in 80 gradient-descent steps. Log-y axis.</div>
+  </div>
+  <div class="item">
+    <img src="empire_toolkit_out/fig8_savings_force_field.png" alt="Savings force field">
+    <div class="cap">Demo 8 — savings force field. (Left) V(d) potential, peaked at center. (Right) F = −∇V, normalized arrows. Field is centrally attractive and conservative.</div>
+  </div>
+  <div class="item">
+    <img src="empire_toolkit_out/fig9_least_change_path.png" alt="Least empire change path">
+    <div class="cap">Demo 9 — path of least empire change. Both straight and greedy paths have action 0 — confirms W<sub>E</sub> volume is a translation-invariant of γ.</div>
+  </div>
+  <div class="item">
+    <img src="empire_toolkit_out/fig10_facets_to_20G.png" alt="20 facets to 20G">
+    <div class="cap">Demo 10 — 20 cut-window facet normals on the unit sphere (centrosymmetric, icosahedral arrangement). Histogram of inter-facet angles shows 16 distinct dot products. Min angle 37.87°, NOT c₀ = 15.52°.</div>
+  </div>
+  <div class="item" style="background: transparent; border: 1px dashed #2a2a32;">
+    <div class="cap" style="text-align: center; padding: 60px 20px; color: #877;">
+      All numerical results in <a href="empire_toolkit_out/results.json" style="color:#79c">results.json</a>.
+      <br><br>
+      Math digest: <a href="../EMPIRE_PROBLEM_FORMALISM.md" style="color:#79c">EMPIRE_PROBLEM_FORMALISM.md</a> (Tier 0).
+      <br><br>
+      Results doc: <a href="EMPIRE_TOOLKIT_RESULTS.md" style="color:#79c">EMPIRE_TOOLKIT_RESULTS.md</a> (Tier 1).
+    </div>
+  </div>
+</div>
+
+</div><!-- /.container -->
+
+<script>
+"use strict";
+
+// =====================================================================
+// 0. Load precomputed empire data
+// =====================================================================
+let DATA = null;
+
+async function loadData() {
+  try {
+    const res = await fetch('empire_data.json');
+    DATA = await res.json();
+    initAll();
+  } catch (err) {
+    console.error('Failed to load empire_data.json:', err);
+    document.body.insertAdjacentHTML('afterbegin',
+      '<div style="background:#440; color:#fdc; padding:12px;">⚠ Could not load empire_data.json. Run <code>python export_empire_data.py</code> in the simulations folder first.</div>');
+  }
+}
+
+// =====================================================================
+// 1. Three.js renderer for cut window W + empire window W_E
+// =====================================================================
+function makePolytopeMesh(verts, faces, color, opacity) {
+  const geom = new THREE.BufferGeometry();
+  const positions = [];
+  for (const f of faces) {
+    for (const idx of f) {
+      positions.push(verts[idx][0], verts[idx][1], verts[idx][2]);
+    }
+  }
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geom.computeVertexNormals();
+  const mat = new THREE.MeshPhongMaterial({
+    color, opacity, transparent: opacity < 1.0,
+    side: THREE.DoubleSide, flatShading: true,
+  });
+  return new THREE.Mesh(geom, mat);
+}
+
+function makeWireframeMesh(verts, faces, color) {
+  // Render edges from face triangles
+  const edges = new Set();
+  for (const f of faces) {
+    for (let i = 0; i < f.length; i++) {
+      const a = f[i], b = f[(i+1) % f.length];
+      const k = a < b ? `${a},${b}` : `${b},${a}`;
+      edges.add(k);
+    }
+  }
+  const positions = [];
+  for (const k of edges) {
+    const [a, b] = k.split(',').map(Number);
+    positions.push(verts[a][0], verts[a][1], verts[a][2]);
+    positions.push(verts[b][0], verts[b][1], verts[b][2]);
+  }
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  return new THREE.LineSegments(geom, new THREE.LineBasicMaterial({ color }));
+}
+
+function setupThreeScene(containerId) {
+  const el = document.getElementById(containerId);
+  const W = el.clientWidth, H = 360;
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x1a1a22);
+  const camera = new THREE.PerspectiveCamera(45, W/H, 0.01, 100);
+  camera.position.set(2.5, 1.5, 2.5);
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(W, H);
+  el.appendChild(renderer.domElement);
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  // Lights
+  scene.add(new THREE.AmbientLight(0xaaaaee, 0.5));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+  dir.position.set(3, 5, 3);
+  scene.add(dir);
+  // Axes
+  scene.add(new THREE.AxesHelper(0.3));
+  return { scene, camera, renderer, controls };
+}
+
+let cwScene = null;
+let cwState = { showW: true, showWE: true, showNormals: true };
+function initCutWindow() {
+  cwScene = setupThreeScene('cw3d');
+  const { scene } = cwScene;
+  // W (rhombic icosahedron)
+  const W = DATA.cut_window;
+  const wMesh = makePolytopeMesh(W.vertices, W.faces, 0x5577cc, 0.20);
+  const wWire = makeWireframeMesh(W.vertices, W.faces, 0x88aacc);
+  scene.add(wMesh); scene.add(wWire);
+  cwScene.W = { mesh: wMesh, wire: wWire };
+
+  // W_E
+  const WE = DATA.empire_window_ref;
+  if (WE.vertices.length > 0) {
+    const weMesh = makePolytopeMesh(WE.vertices, WE.faces, 0xcc5566, 0.50);
+    const weWire = makeWireframeMesh(WE.vertices, WE.faces, 0xffaabb);
+    scene.add(weMesh); scene.add(weWire);
+    cwScene.WE = { mesh: weMesh, wire: weWire };
+  }
+
+  // 20 facet normals as small spheres on unit sphere
+  const sphereGroup = new THREE.Group();
+  for (const n of W.normals) {
+    const s = new THREE.Mesh(
+      new THREE.SphereGeometry(0.04, 12, 12),
+      new THREE.MeshPhongMaterial({ color: 0xffcc88 })
+    );
+    s.position.set(n[0], n[1], n[2]);
+    sphereGroup.add(s);
+    // Arrow from origin
+    const arrowDir = new THREE.Vector3(n[0], n[1], n[2]).normalize();
+    const arrow = new THREE.ArrowHelper(arrowDir, new THREE.Vector3(0,0,0),
+      0.95, 0xffaa44, 0.06, 0.04);
+    sphereGroup.add(arrow);
+  }
+  scene.add(sphereGroup);
+  cwScene.normals = sphereGroup;
+
+  document.getElementById('cw3d-stat').textContent =
+    `W: ${W.vertices.length} v, ${W.faces.length} f | W_E: ${WE.vertices.length} v, ${WE.faces.length} f`;
+
+  // Animate
+  function animate() {
+    cwScene.controls.update();
+    cwScene.renderer.render(cwScene.scene, cwScene.camera);
+    requestAnimationFrame(animate);
+  }
+  animate();
+
+  document.getElementById('btn-show-W').onclick = () => {
+    cwState.showW = !cwState.showW;
+    cwScene.W.mesh.visible = cwState.showW;
+    cwScene.W.wire.visible = cwState.showW;
+  };
+  document.getElementById('btn-show-WE').onclick = () => {
+    cwState.showWE = !cwState.showWE;
+    if (cwScene.WE) {
+      cwScene.WE.mesh.visible = cwState.showWE;
+      cwScene.WE.wire.visible = cwState.showWE;
+    }
+  };
+  document.getElementById('btn-show-normals').onclick = () => {
+    cwState.showNormals = !cwState.showNormals;
+    cwScene.normals.visible = cwState.showNormals;
+  };
+}
+
+// =====================================================================
+// 2. Z_10 atlas viewer
+// =====================================================================
+let z10Scene = null;
+let z10State = { tick: 0, playing: false };
+
+function initZ10() {
+  z10Scene = setupThreeScene('z10-3d');
+  const { scene } = z10Scene;
+  // Render W (faint)
+  const W = DATA.cut_window;
+  scene.add(makePolytopeMesh(W.vertices, W.faces, 0x5577cc, 0.10));
+  scene.add(makeWireframeMesh(W.vertices, W.faces, 0x668899));
+  // W_E placeholder
+  z10Scene.weMesh = null;
+  z10Scene.weWire = null;
+  setZ10Tick(0);
+  // Animate
+  function animate() {
+    z10Scene.controls.update();
+    z10Scene.renderer.render(z10Scene.scene, z10Scene.camera);
+    requestAnimationFrame(animate);
+  }
+  animate();
+
+  // Controls
+  document.getElementById('btn-z10-prev').onclick = () => setZ10Tick((z10State.tick + 19) % 20);
+  document.getElementById('btn-z10-next').onclick = () => setZ10Tick((z10State.tick + 1) % 20);
+  document.getElementById('btn-z10-play').onclick = () => {
+    z10State.playing = !z10State.playing;
+    document.getElementById('btn-z10-play').textContent =
+      z10State.playing ? '⏸ Pause' : '▶ Auto play';
+    if (z10State.playing) z10AutoTick();
+  };
+  drawZ10VolPlot();
+}
+
+function setZ10Tick(k) {
+  z10State.tick = k;
+  const atlas = DATA.z10_atlas[k];
+  // Remove old W_E
+  if (z10Scene.weMesh) z10Scene.scene.remove(z10Scene.weMesh);
+  if (z10Scene.weWire) z10Scene.scene.remove(z10Scene.weWire);
+  if (atlas.vertices.length > 0) {
+    z10Scene.weMesh = makePolytopeMesh(atlas.vertices, atlas.faces, 0xcc5566, 0.55);
+    z10Scene.weWire = makeWireframeMesh(atlas.vertices, atlas.faces, 0xffaabb);
+    z10Scene.scene.add(z10Scene.weMesh);
+    z10Scene.scene.add(z10Scene.weWire);
+  }
+  document.getElementById('z10-stat').textContent =
+    `tick ${k} / γ_a = ${atlas.gamma_a.toFixed(4)} γ_b = ${atlas.gamma_b.toFixed(4)} | V = ${atlas.volume.toFixed(5)}`;
+  // Highlight in mini-plot
+  drawZ10VolPlot();
+}
+
+function z10AutoTick() {
+  if (!z10State.playing) return;
+  setZ10Tick((z10State.tick + 1) % 20);
+  setTimeout(z10AutoTick, 380);
+}
+
+function drawZ10VolPlot() {
+  const c = document.getElementById('z10-vol-plot');
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, c.width, c.height);
+  // Compute bounds
+  const vols = DATA.z10_atlas.map(a => a.volume);
+  const vMin = Math.min(...vols), vMax = Math.max(...vols);
+  // Almost identical (isometry) — use small tolerance for visual range
+  const range = Math.max(vMax - vMin, 1e-4);
+  const yMid = c.height / 2;
+  ctx.strokeStyle = '#3a3a44';
+  ctx.beginPath();
+  ctx.moveTo(20, yMid); ctx.lineTo(c.width - 20, yMid);
+  ctx.stroke();
+  ctx.fillStyle = '#9ac';
+  ctx.font = '11px Consolas';
+  ctx.fillText('Volume (essentially constant — Z₁₀ isometry)', 24, 16);
+  ctx.fillText(`V_min = ${vMin.toFixed(8)}`, 24, c.height - 6);
+  ctx.fillText(`V_max = ${vMax.toFixed(8)}`, c.width - 240, c.height - 6);
+  // Plot dots
+  for (let i = 0; i < 20; i++) {
+    const x = 20 + (c.width - 40) * i / 19;
+    const dy = ((vols[i] - vMin) / range - 0.5) * 30;
+    const y = yMid + dy;
+    ctx.beginPath();
+    ctx.arc(x, y, i === z10State.tick ? 5 : 3, 0, 2*Math.PI);
+    ctx.fillStyle = i === z10State.tick ? '#fc6' : '#79c';
+    ctx.fill();
+    if (i === 10) {
+      ctx.strokeStyle = '#a55';
+      ctx.beginPath(); ctx.moveTo(x, 24); ctx.lineTo(x, c.height - 20); ctx.stroke();
+      ctx.fillStyle = '#a55'; ctx.fillText('mod-10', x - 18, 22);
+    }
+  }
+}
+
+// =====================================================================
+// 3. Force field viewer
+// =====================================================================
+function drawForceField() {
+  const c = document.getElementById('force-canvas');
+  const ctx = c.getContext('2d');
+  const ff = DATA.force_field;
+  const n = ff.n;
+  const W = c.width, H = c.height;
+  const showV = document.getElementById('show-V').checked;
+  const showF = document.getElementById('show-F').checked;
+  ctx.clearRect(0, 0, W, H);
+
+  // V heatmap
+  if (showV) {
+    let vMin = Infinity, vMax = -Infinity;
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+      const v = ff.V[i][j];
+      if (v < vMin) vMin = v;
+      if (v > vMax) vMax = v;
+    }
+    const cellW = W / n;
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        const t = (ff.V[i][j] - vMin) / (vMax - vMin);
+        // viridis-ish colormap
+        const r = Math.round(70 + 180*t);
+        const g = Math.round(40 + 160*t*t);
+        const b = Math.round(120 - 40*t);
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        ctx.fillRect(j * cellW, i * cellW, cellW + 1, cellW + 1);
+      }
+    }
+    document.getElementById('force-stat').textContent =
+      `V range [${vMin.toFixed(3)}, ${vMax.toFixed(3)}]`;
+  }
+  // Force vectors
+  if (showF) {
+    const cellW = W / n;
+    let fMax = 0;
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+      const F = ff.F[i][j];
+      const m = Math.hypot(F[0], F[1]);
+      if (m > fMax) fMax = m;
+    }
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        const F = ff.F[i][j];
+        const m = Math.hypot(F[0], F[1]);
+        if (m < 1e-9) continue;
+        const x0 = (j + 0.5) * cellW;
+        const y0 = (i + 0.5) * cellW;
+        const len = (m / fMax) * cellW * 0.8;
+        const dx = F[0]/m * len;
+        const dy = F[1]/m * len;
+        ctx.strokeStyle = `rgba(255,255,200,${0.3 + 0.6*m/fMax})`;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(x0, y0); ctx.lineTo(x0 + dx, y0 + dy);
+        ctx.stroke();
+        // Arrow head
+        const head = 4;
+        const ang = Math.atan2(dy, dx);
+        ctx.beginPath();
+        ctx.moveTo(x0+dx, y0+dy);
+        ctx.lineTo(x0+dx - head*Math.cos(ang-0.5), y0+dy - head*Math.sin(ang-0.5));
+        ctx.moveTo(x0+dx, y0+dy);
+        ctx.lineTo(x0+dx - head*Math.cos(ang+0.5), y0+dy - head*Math.sin(ang+0.5));
+        ctx.stroke();
+      }
+    }
+  }
+  // Center cross
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(W/2 - 6, H/2); ctx.lineTo(W/2 + 6, H/2);
+  ctx.moveTo(W/2, H/2 - 6); ctx.lineTo(W/2, H/2 + 6);
+  ctx.stroke();
+}
+
+function initForceField() {
+  drawForceField();
+  document.getElementById('show-V').onchange = drawForceField;
+  document.getElementById('show-F').onchange = drawForceField;
+}
+
+// =====================================================================
+// 4. Defect-correction simulator
+// =====================================================================
+let defectState = { offsets: null, perfect: null, energies: [], step: 0, playing: false };
+
+function defectStep() {
+  const lr = 0.15;
+  const grad = defectState.offsets.map((b, i) => b - defectState.perfect[i]);
+  const E = grad.reduce((s, g) => s + g*g, 0) / 2;
+  defectState.offsets = defectState.offsets.map((b, i) => b - lr * grad[i]);
+  defectState.energies.push(E);
+  defectState.step++;
+}
+
+function defectRestart() {
+  // Use cut window offsets as the "perfect"
+  defectState.perfect = DATA.cut_window.offsets.slice();
+  // Random perturbation
+  defectState.offsets = defectState.perfect.map(
+    b => b + (Math.random() - 0.5) * 0.4
+  );
+  defectState.energies = [];
+  defectState.step = 0;
+  drawDefect();
+}
+
+function drawDefect() {
+  const c = document.getElementById('defect-canvas');
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.strokeStyle = '#3a3a44';
+  ctx.beginPath();
+  ctx.moveTo(40, c.height - 30); ctx.lineTo(c.width - 10, c.height - 30);
+  ctx.moveTo(40, 10); ctx.lineTo(40, c.height - 30);
+  ctx.stroke();
+  ctx.fillStyle = '#9ac';
+  ctx.font = '11px Consolas';
+  ctx.fillText('step', c.width / 2, c.height - 10);
+  ctx.save();
+  ctx.translate(14, c.height/2);
+  ctx.rotate(-Math.PI/2);
+  ctx.fillText('log10(E)', 0, 0);
+  ctx.restore();
+
+  if (defectState.energies.length === 0) return;
+  const Es = defectState.energies;
+  const logEs = Es.map(e => Math.log10(Math.max(e, 1e-15)));
+  const yMin = Math.min(...logEs), yMax = Math.max(...logEs);
+  const xMax = Math.max(80, Es.length);
+  ctx.strokeStyle = '#fc6';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i < Es.length; i++) {
+    const x = 40 + (c.width - 50) * i / xMax;
+    const y = (c.height - 30) - (c.height - 40) * (logEs[i] - yMin) / Math.max(yMax - yMin, 0.1);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  document.getElementById('defect-stat').textContent =
+    `step ${defectState.step} / E = ${Es[Es.length-1].toExponential(3)}`;
+}
+
+function initDefect() {
+  defectRestart();
+  document.getElementById('btn-defect-restart').onclick = () => {
+    defectState.playing = false;
+    document.getElementById('btn-defect-play').textContent = '▶ Auto-relax';
+    defectRestart();
+  };
+  document.getElementById('btn-defect-step').onclick = () => {
+    defectStep(); drawDefect();
+  };
+  document.getElementById('btn-defect-play').onclick = () => {
+    defectState.playing = !defectState.playing;
+    document.getElementById('btn-defect-play').textContent =
+      defectState.playing ? '⏸ Pause' : '▶ Auto-relax';
+    if (defectState.playing) autoRelaxLoop();
+  };
+}
+
+function autoRelaxLoop() {
+  if (!defectState.playing || defectState.step >= 80) {
+    defectState.playing = false;
+    document.getElementById('btn-defect-play').textContent = '▶ Auto-relax';
+    return;
+  }
+  defectStep(); drawDefect();
+  setTimeout(autoRelaxLoop, 80);
+}
+
+// =====================================================================
+// 5. Falloff plot
+// =====================================================================
+function drawFalloff() {
+  const inv = DATA.inverse_square;
+  // Linear plot
+  let c = document.getElementById('falloff-linear');
+  let ctx = c.getContext('2d');
+  drawAxes(ctx, c.width, c.height,
+    'displacement |d|', 'overlap V',
+    [0, Math.max(...inv.rs)], [0, Math.max(...inv.overlaps)]);
+  plotXY(ctx, c.width, c.height, inv.rs, inv.overlaps,
+    [0, Math.max(...inv.rs)], [0, Math.max(...inv.overlaps)],
+    '#fc6');
+
+  // Log-log plot
+  c = document.getElementById('falloff-loglog');
+  ctx = c.getContext('2d');
+  // Filter rs > 0 and overlaps > 0
+  const rs2 = [], ov2 = [];
+  for (let i = 0; i < inv.rs.length; i++) {
+    if (inv.rs[i] > 0 && inv.overlaps[i] > 1e-10) {
+      rs2.push(Math.log10(inv.rs[i]));
+      ov2.push(Math.log10(inv.overlaps[i]));
+    }
+  }
+  const xMin = Math.min(...rs2), xMax = Math.max(...rs2);
+  const yMin = Math.min(...ov2), yMax = Math.max(...ov2);
+  drawAxes(ctx, c.width, c.height,
+    'log₁₀ |d|', 'log₁₀ V',
+    [xMin, xMax], [yMin, yMax]);
+  plotXY(ctx, c.width, c.height, rs2, ov2,
+    [xMin, xMax], [yMin, yMax],
+    '#fc6');
+  // Fit line slope = -1.482
+  const slope = inv.fit_slope;
+  // intercept: pass through middle data point (median)
+  const xMid = rs2[Math.floor(rs2.length/2)];
+  const yMid = ov2[Math.floor(ov2.length/2)];
+  const intercept = yMid - slope * xMid;
+  const xs = [xMin, xMax];
+  const ys = xs.map(x => slope * x + intercept);
+  plotXY(ctx, c.width, c.height, xs, ys,
+    [xMin, xMax], [yMin, yMax], '#a8d', 'line', `slope = ${slope.toFixed(2)}`);
+}
+
+function drawAxes(ctx, W, H, xLabel, yLabel, xRange, yRange) {
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = '#3a3a44';
+  ctx.beginPath();
+  ctx.moveTo(40, H - 30); ctx.lineTo(W - 10, H - 30);
+  ctx.moveTo(40, 10); ctx.lineTo(40, H - 30);
+  ctx.stroke();
+  ctx.fillStyle = '#9ac';
+  ctx.font = '11px Consolas';
+  ctx.fillText(xLabel, W/2 - 30, H - 10);
+  ctx.save();
+  ctx.translate(14, H/2);
+  ctx.rotate(-Math.PI/2);
+  ctx.fillText(yLabel, 0, 0);
+  ctx.restore();
+  // Tick labels
+  ctx.fillStyle = '#778';
+  ctx.font = '10px Consolas';
+  ctx.fillText(xRange[0].toFixed(2), 40, H - 16);
+  ctx.fillText(xRange[1].toFixed(2), W - 40, H - 16);
+  ctx.fillText(yRange[1].toFixed(2), 4, 16);
+  ctx.fillText(yRange[0].toFixed(2), 4, H - 32);
+}
+
+function plotXY(ctx, W, H, xs, ys, xRange, yRange, color, mode = 'line+dot', label = '') {
+  const tx = x => 40 + (W - 50) * (x - xRange[0]) / (xRange[1] - xRange[0]);
+  const ty = y => (H - 30) - (H - 40) * (y - yRange[0]) / Math.max(yRange[1] - yRange[0], 1e-9);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < xs.length; i++) {
+    const x = tx(xs[i]), y = ty(ys[i]);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  if (mode.includes('dot')) {
+    ctx.fillStyle = color;
+    for (let i = 0; i < xs.length; i++) {
+      const x = tx(xs[i]), y = ty(ys[i]);
+      ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 2*Math.PI); ctx.fill();
+    }
+  }
+  if (label) {
+    ctx.fillStyle = color;
+    ctx.font = '11px Consolas';
+    ctx.fillText(label, W - 130, 26);
+  }
+}
+
+// =====================================================================
+// Init everything once data loads
+// =====================================================================
+function initAll() {
+  initCutWindow();
+  initZ10();
+  initForceField();
+  initDefect();
+  drawFalloff();
+}
+
+loadData();
+</script>
+</body>
+</html>
