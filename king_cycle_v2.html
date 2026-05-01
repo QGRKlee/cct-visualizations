@@ -263,13 +263,16 @@ function sigmaPow(v, t) {
 }
 
 function gammaForTick(t) {
-  // γ̃ rotates by 144° per tick in (B3, B4) I-plane (matches σ on 5-tuple)
-  const ang = (144 * t * Math.PI/180);
-  const c = Math.cos(ang), s = Math.sin(ang);
-  return {
-    a: GAMMA_A_0 * c - GAMMA_B_0 * s,
-    b: GAMMA_A_0 * s + GAMMA_B_0 * c,
-  };
+  // γ̃ stays FIXED at γ_0 across all ticks. Rationale (Klee 2026-05-01):
+  // We want a STATIONARY central star decagon with the K-CE rotating
+  // around it — not the entire patch co-rotating with K. Since γ
+  // controls the patch's cut offset (and thus where the central
+  // decagon lands in 2D), holding γ fixed pins the patch.
+  // σ-rotation is applied ONLY to K's 5-tuple (sigmaPow on K_5tuple),
+  // which moves K through 5 angular positions around the fixed origin.
+  // Tiles in the σ-orbit of the canonical K-tiles are rendered at
+  // their σ-shifted 5-tuples, projected through the SAME γ_0.
+  return { a: GAMMA_A_0, b: GAMMA_B_0 };
 }
 
 function rhKey(corners_5d) {
@@ -566,13 +569,9 @@ function update3DInset(tick) {
     const ang = (144 * tick * Math.PI/180);
     smallGroup.rotation.set(0, 0, ang);
   }
-  // γ̃ marker rotates on the orbit circle in (B3, B4) plane
+  // γ̃ marker stays FIXED at γ_0 (γ does not rotate per tick — see gammaForTick)
   if (gammaMarker) {
-    const ang = (144 * tick * Math.PI/180);
-    const c = Math.cos(ang), s = Math.sin(ang);
-    const a = GAMMA_A_0 * c - GAMMA_B_0 * s;
-    const b = GAMMA_A_0 * s + GAMMA_B_0 * c;
-    gammaMarker.position.set(a, b, 0);
+    gammaMarker.position.set(GAMMA_A_0, GAMMA_B_0, 0);
   }
 }
 
