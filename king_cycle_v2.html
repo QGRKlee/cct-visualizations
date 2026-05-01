@@ -98,8 +98,9 @@
     <h3>E⊥ — large W (Φ⁰ possibility space, static) + small inflation generator (rotates per tick)</h3>
     <p>
       <b>Blue W</b>: rhombic icosidodecahedron — the Φ⁰ pre-inflation possibility space. Static at origin.
-      <b>Red W'</b>: inflation generator (W scaled by 1/φ²) that rotates inside W per tick. Each rotation = one inflation = one CE configuration.
-      Each tick: γ̃ rotates 144° in (B₃, B₄) I-plane (cyclic-shift σ on lattice), the 2D Penrose tiling rotates 72°, and the K-CE walks 72° around the central decagon.
+      <b>Red W'</b>: inflation generator (W scaled by 1/φ²), centered on the K-CE's perp-projection. Both <em>translates</em> (its centroid orbits in the I-plane at fixed B₅) and <em>rotates</em> (around the world z-axis = B₅ axis) per tick. Each step = one inflation = one σ on the lattice.
+      <b>Green sphere</b>: tracked vertex on W' that orbits the world z-axis — makes the σ-rotation visible (W's own 5-fold symmetry around B₅ would otherwise make the rotation invisible).
+      <b>Yellow sphere</b>: γ̃ on its (B₃, B₄) orbit at z=0.
     </p>
     <div id="perp-3d"></div>
     <div class="info-grid">
@@ -407,25 +408,107 @@ function setup3DInset() {
   scene3d.add(dl);
   scene3d.add(new THREE_NS.AxesHelper(0.35));
 
-  // STATIC W (blue, large, at origin)
+  // STATIC W (blue, large, at origin) — the Φ⁰ possibility space
   buildPolytope(DATA.cut_window.vertices, DATA.cut_window.faces,
                 0x5577cc, 0.18, 0x88aacc, scene3d);
 
-  // SMALL inflation generator (red, scaled by 1/φ², in its own group so we can rotate it)
+  // ----------------------------------------------------------------
+  // Compute K's perp-projection in the DISPLAY frame (= subtracting
+  // γ̃_effective which has B₅ component = √5/2 from the implicit
+  // pentagrid offset).  This places the K-centroid INSIDE W instead
+  // of above it.
+  // ----------------------------------------------------------------
+  const K_5tuple_0 = DATA.canonical_K_CE.K_vertex_5d;
+  let K_perp_B3 = 0, K_perp_B4 = 0, K_perp_B5 = 0;
+  for (let j = 0; j < 5; j++) {
+    K_perp_B3 += K_5tuple_0[j] * B3[j];
+    K_perp_B4 += K_5tuple_0[j] * B4[j];
+    K_perp_B5 += K_5tuple_0[j] * B5[j];
+  }
+  const SQRT5_2 = Math.sqrt(5) / 2;
+  // K's display perp-position at tick 0 (before any σ-rotation)
+  const K_disp_x_0 = K_perp_B3 - GAMMA_A_0;
+  const K_disp_y_0 = K_perp_B4 - GAMMA_B_0;
+  const K_disp_z   = K_perp_B5 - SQRT5_2;  // fixed across all ticks (B5 invariant under σ)
+
+  // ----------------------------------------------------------------
+  // SMALL inflation generator: parent group rotates around world
+  // z-axis by σ-angle per tick.  Inner child holds the actual small
+  // polytope, offset to K's display perp-position.  As parent
+  // rotates, inner child's WORLD position traces a circle around
+  // origin (in the B₃, B₄ plane at fixed B₅ = K_disp_z).
+  // ----------------------------------------------------------------
   smallGroup = new THREE_NS.Group();
   scene3d.add(smallGroup);
+
+  const innerChild = new THREE_NS.Group();
+  innerChild.position.set(K_disp_x_0, K_disp_y_0, K_disp_z);
+  smallGroup.add(innerChild);
+
   const inflate_scale = 1.0 / (PHI * PHI);
   const small_verts = DATA.cut_window.vertices.map(v => v.map(x => x * inflate_scale));
   buildPolytope(small_verts, DATA.cut_window.faces,
-                0xcc4040, 0.55, 0xff8866, smallGroup);
+                0xcc4040, 0.55, 0xff8866, innerChild);
 
-  // γ̃ marker
+  // ----------------------------------------------------------------
+  // Tracked-vertex marker: bright cyan/green sphere on one specific
+  // vertex of the small shape.  As the σ-rotation advances, this
+  // sphere will visibly orbit around the world z-axis (= B₅ axis),
+  // making the rotation visible despite the polytope's own 5-fold
+  // symmetry making the silhouette invariant.
+  //
+  // Pick the vertex farthest from the rotation axis (= largest
+  // |I-plane component|) for maximum visible motion.
+  // ----------------------------------------------------------------
+  let trackedIdx = 0, maxR = 0;
+  for (let i = 0; i < small_verts.length; i++) {
+    const r = Math.hypot(small_verts[i][0], small_verts[i][1]);
+    if (r > maxR) { maxR = r; trackedIdx = i; }
+  }
+  const tv = small_verts[trackedIdx];
+  const trackedSphere = new THREE_NS.Mesh(
+    new THREE_NS.SphereGeometry(0.05, 16, 16),
+    new THREE_NS.MeshPhongMaterial({ color: 0x00ff88, emissive: 0x004422 })
+  );
+  trackedSphere.position.set(tv[0], tv[1], tv[2]);
+  innerChild.add(trackedSphere);
+
+  // Trace circle for the tracked vertex (faint green ring at the
+  // vertex's z-height in world coords)
+  const tracked_world_x_0 = K_disp_x_0 + tv[0];
+  const tracked_world_y_0 = K_disp_y_0 + tv[1];
+  const tracked_world_z   = K_disp_z   + tv[2];
+  const tracked_orbit_r = Math.hypot(tracked_world_x_0, tracked_world_y_0);
+  const tvTraceGeo = new THREE_NS.BufferGeometry();
+  const tvTracePts = [];
+  for (let i = 0; i <= 96; i++) {
+    const a = (i / 96) * 2 * Math.PI;
+    tvTracePts.push(tracked_orbit_r * Math.cos(a),
+                    tracked_orbit_r * Math.sin(a),
+                    tracked_world_z);
+  }
+  tvTraceGeo.setAttribute('position', new THREE_NS.Float32BufferAttribute(tvTracePts, 3));
+  scene3d.add(new THREE_NS.Line(tvTraceGeo, new THREE_NS.LineBasicMaterial({ color: 0x004422 })));
+
+  // K-centroid trace circle (faint magenta ring at K's z-height)
+  const k_orbit_r = Math.hypot(K_disp_x_0, K_disp_y_0);
+  const kTraceGeo = new THREE_NS.BufferGeometry();
+  const kTracePts = [];
+  for (let i = 0; i <= 96; i++) {
+    const a = (i / 96) * 2 * Math.PI;
+    kTracePts.push(k_orbit_r * Math.cos(a),
+                   k_orbit_r * Math.sin(a),
+                   K_disp_z);
+  }
+  kTraceGeo.setAttribute('position', new THREE_NS.Float32BufferAttribute(kTracePts, 3));
+  scene3d.add(new THREE_NS.Line(kTraceGeo, new THREE_NS.LineBasicMaterial({ color: 0x441122 })));
+
+  // γ̃ marker (yellow sphere) on its own orbit in (B3, B4) plane at z=0
   gammaMarker = new THREE_NS.Mesh(
     new THREE_NS.SphereGeometry(0.04, 16, 16),
     new THREE_NS.MeshPhongMaterial({ color: 0xffdd33 })
   );
   scene3d.add(gammaMarker);
-  // γ̃ orbit trace
   const traceGeo = new THREE_NS.BufferGeometry();
   const tracePts = [];
   const r0 = Math.hypot(GAMMA_A_0, GAMMA_B_0);
