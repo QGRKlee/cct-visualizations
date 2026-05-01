@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>King Cycle v2 — live cut-and-project + two-window translating structure</title>
+<style>
+  body {
+    background: #000; color: #aaa;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    margin: 0; padding: 0;
+  }
+  header {
+    background: #0a0a0a; border-bottom: 1px solid #222;
+    padding: 8px 18px;
+    display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 15px; color: #cca; margin: 0; font-weight: normal; }
+  .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  button {
+    background: #1a1a1a; color: #ccc; border: 1px solid #333;
+    padding: 5px 12px; border-radius: 3px; cursor: pointer;
+    font-family: inherit; font-size: 12px;
+  }
+  button:hover { background: #252525; color: #fff; }
+  .stat { font-family: 'Consolas', 'Menlo', monospace; font-size: 11px; color: #88a; }
+  .legend { display: flex; gap: 14px; align-items: center; font-size: 11px; color: #888; }
+  .swatch { display: inline-block; width: 11px; height: 11px; vertical-align: middle; margin-right: 4px; border-radius: 2px; }
+
+  main {
+    display: grid;
+    grid-template-columns: 1fr 480px;
+    gap: 0;
+    height: calc(100vh - 50px);
+  }
+  #physical-pane {
+    background: #000; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #physical-pane svg { display: block; }
+  #perp-pane {
+    background: #050510;
+    border-left: 1px solid #222;
+    display: flex; flex-direction: column;
+  }
+  #perp-pane h3 {
+    font-size: 13px; color: #cca; margin: 8px 14px 4px; font-weight: normal;
+  }
+  #perp-pane p { font-size: 11px; color: #779; margin: 0 14px 8px; line-height: 1.5; }
+  #perp-3d {
+    flex: 1; min-height: 360px;
+    background: #0a0a14; margin: 0 14px;
+    border: 1px solid #1a1a22; border-radius: 4px;
+  }
+  .info-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px;
+    margin: 12px 14px;
+    font-family: 'Consolas', 'Menlo', monospace; font-size: 11px;
+    color: #aab;
+  }
+  .info-grid b { color: #fcc; }
+</style>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.149.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.149.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+
+<header>
+  <h1>King Cycle v2 — live cut-and-project from Z⁵, two-window translating structure</h1>
+  <div class="controls">
+    <button id="btn-prev">◀ Prev</button>
+    <button id="btn-next">Next ▶</button>
+    <button id="btn-play">▶ Auto</button>
+    <span class="stat" id="cycle-stat">tick 0 / 5 (Z₅)</span>
+    <button id="btn-mode">Mode: Z₅ (5 ticks)</button>
+  </div>
+  <div class="legend">
+    <span><span class="swatch" style="background:#cc1010"></span>K-CE (centroid + edge-connected)</span>
+    <span><span class="swatch" style="background:#552020"></span>Empire</span>
+    <span><span class="swatch" style="background:#0a0a0a; border:1px solid #222"></span>Substrate (off)</span>
+  </div>
+</header>
+
+<main>
+  <div id="physical-pane">
+    <svg xmlns="http://www.w3.org/2000/svg" id="physical" width="900" height="900" viewBox="-13 -13 26 26">
+      <g id="g-tiles" transform="matrix(1 0 0 -1 0 0)"></g>
+      <g id="g-overlay" transform="matrix(1 0 0 -1 0 0)"></g>
+    </svg>
+  </div>
+
+  <aside id="perp-pane">
+    <h3>E⊥ (3D perpendicular space) — large window W and small window W_E</h3>
+    <p>
+      W is the rhombic icosidodecahedron (32 cube vertices, 22 hull, 20 facets).
+      W_E ⊆ W is the empire window of the K-CE patch.
+      γ̃ (yellow sphere) shifts in E⊥; W and W_E translate with it.
+      As γ̃ rotates by 144° in the (B₃, B₄) I-plane per tick, the K-CE walks 72° around the central decagon in 2D physical space (right pane → main pane).
+    </p>
+    <div id="perp-3d"></div>
+    <div class="info-grid">
+      <span><b>γ̃</b> in E⊥</span><span id="gamma-info">—</span>
+      <span><b>K-CE 2D</b></span><span id="ce-info">—</span>
+      <span><b>K tiles</b></span><span id="kct-info">—</span>
+      <span><b>Empire</b></span><span id="emp-info">—</span>
+      <span><b>Patch tiles</b></span><span id="patch-info">—</span>
+      <span><b>Inflation #</b></span><span id="tick-info">0</span>
+    </div>
+  </aside>
+</main>
+
+<!-- Inline data bundle (king_cycle_v2_data.json) — works on file:// -->
+<script type="application/json" id="kv2-data">
+{"gamma_a":0.05,"gamma_b":0.03,"R":12.0,"B":{"B1":[0.6324555320336759,0.19543950758485482,-0.5116672736016927,-0.5116672736016927,0.19543950758485468],"B2":[0.0,0.6015009550075456,0.37174803446018456,-0.37174803446018445,-0.6015009550075457],"B3":[0.6324555320336759,-0.5116672736016927,0.19543950758485468,0.19543950758485498,-0.511667273601693],"B4":[0.0,0.37174803446018456,-0.6015009550075457,0.6015009550075456,-0.3717480344601843],"B5":[0.4472135954999579,0.4472135954999579,0.4472135954999579,0.4472135954999579,0.4472135954999579]},"cut_window":{"normals":[[-0.28315848617949657,-0.8714722113261029,0.40044657145607865],[0.28315848617949657,0.8714722113261029,-0.40044657145607865],[0.5324073960238527,-0.3868166154359214,-0.7529377601646761],[-0.5324073960238527,0.3868166154359214,0.7529377601646761],[-0.5324073960238527,-0.3868166154359211,0.752937760164676],[0.5324073960238527,0.3868166154359211,-0.752937760164676],[0.2831584861794963,-0.8714722113261031,-0.4004465714560783],[-0.2831584861794963,0.8714722113261031,0.4004465714560783],[0.7413185410208892,0.5385994468505626,0.40044657145607865],[-0.7413185410208892,-0.5385994468505626,-0.40044657145607865],[-0.20336152941928604,0.6258824311885179,-0.7529377601646761],[0.20336152941928604,-0.6258824311885179,0.7529377601646761],[0.6580917332091332,-1.6480267401081018e-16,0.752937760164676],[-0.6580917332091332,1.6480267401081018e-16,-0.752937760164676],[-0.9163201096827853,2.3636662051998166e-16,0.40044657145607865],[0.9163201096827853,-2.3636662051998166e-16,-0.40044657145607865],[-0.20336152941928626,-0.6258824311885178,-0.752937760164676],[0.20336152941928626,0.6258824311885178,0.752937760164676],[0.7413185410208889,-0.5385994468505628,0.40044657145607865],[-0.7413185410208889,0.5385994468505628,-0.40044657145607865]],"offsets":[0.8481594490223379,0.8481594490223379,0.8418100072773246,0.8418100072773246,0.8418100072773244,0.8418100072773244,0.848159449022338,0.848159449022338,0.848159449022338,0.848159449022338,0.8418100072773245,0.8418100072773245,0.8418100072773245,0.8418100072773245,0.8481594490223379,0.8481594490223379,0.8418100072773245,0.8418100072773245,0.8481594490223378,0.8481594490223378],"vertices":[[1.0233345472033857,-1.4728627735269958e-16,0.223606797749979],[0.6324555320336759,-1.574438026992625e-16,-0.6708203932499371],[0.19543950758485473,-0.6015009550075459,-0.6708203932499369],[0.8278950396185306,-0.6015009550075459,-0.2236067977499789],[-7.10080985124724e-17,-5.1590403402105375e-17,-1.1180339887498951],[-0.5116672736016928,-0.37174803446018434,-0.6708203932499371],[-0.8278950396185308,-0.6015009550075455,0.22360679774997913],[-0.3162277660168384,-0.9732489894677302,-0.22360679774997896],[-0.6324555320336759,1.574438026992625e-16,0.6708203932499371],[0.5116672736016926,-0.37174803446018434,0.6708203932499371],[-0.195439507584855,-0.6015009550075456,0.670820393249937],[0.3162277660168376,-0.9732489894677302,0.22360679774997896],[-0.5116672736016926,0.3717480344601844,-0.6708203932499371],[-1.0233345472033857,1.8001656120885505e-16,-0.22360679774997902],[-0.8278950396185304,0.601500955007546,0.22360679774997927],[0.19543950758485504,0.6015009550075456,-0.670820393249937],[-0.31622776601683755,0.9732489894677303,-0.22360679774997902],[0.827895039618531,0.6015009550075457,-0.22360679774997905],[0.5116672736016928,0.37174803446018434,0.6708203932499371],[-0.19543950758485473,0.6015009550075459,0.6708203932499369],[0.31622776601683816,0.9732489894677303,0.22360679774997888],[4.3885418357208815e-17,1.3506542960003012e-16,1.1180339887498951]],"faces":[[6,5,7],[6,5,13],[2,5,7],[2,5,4],[2,1,4],[2,1,3],[12,5,13],[12,5,4],[18,9,21],[18,9,0],[17,18,0],[17,18,20],[17,1,3],[17,3,0],[11,2,7],[11,2,3],[11,9,0],[11,3,0],[10,8,21],[10,8,6],[10,9,21],[10,11,9],[10,6,7],[10,11,7],[15,1,4],[15,17,1],[15,12,4],[15,16,12],[15,17,20],[15,16,20],[14,6,13],[14,8,6],[14,12,13],[14,16,12],[19,18,21],[19,18,20],[19,8,21],[19,14,8],[19,16,20],[19,14,16]]},"empire_window":{"vertices":[[0.48315303372793267,0.7434960689203691,1.3416407864998738],[-0.6609697719074367,0.37174803446018495,1.341640786499874],[0.6785925413127877,0.14199511391282454,1.1708203932499366],[0.6785925413127856,0.6015009550075472,1.1708203932499386],[-0.22395374745861554,-0.22975292054736077,1.341640786499874],[0.48315303372793184,6.938893903907228e-16,1.3416407864998745],[-0.02851423987376046,0.3717480344601849,1.788854381999832],[-0.14930249830574346,-0.45950584109472215,0.8944271909999161],[-0.22395374745861524,-0.2297529205473605,0.7236067977499788],[-0.4655302643225816,-0.22975292054736088,1.1708203932499373],[-0.7356210210603084,0.14199511391282388,1.170820393249937],[0.5578042828808042,-0.22975292054736077,0.8944271909999151],[0.4831530337279335,-2.858824288409778e-15,0.7236067977499805],[0.2877135261430769,-0.6015009550075452,0.8944271909999161],[0.0922740185582214,-4.163336342344337e-16,0.447213595499959],[-0.22395374745861524,0.5137431483730084,0.7236067977499789],[-0.028514239873762375,0.37174803446018634,0.5527864045000437],[0.046137009279109284,0.6015009550075473,0.7236067977499805],[-0.14930249830574358,0.7434960689203691,0.8944271909999157]],"faces":[[1,15,18],[1,15,10],[8,14,13],[8,7,13],[4,5,6],[4,5,13],[11,5,13],[11,5,2],[11,14,13],[11,12,14],[0,1,18],[0,1,6],[9,1,10],[9,4,6],[9,1,6],[9,8,10],[9,8,7],[9,7,13],[9,4,13],[3,5,6],[3,5,2],[3,0,6],[3,11,2],[3,11,12],[17,0,18],[17,3,0],[16,15,10],[16,8,10],[16,8,14],[16,12,14],[16,3,12],[16,17,3],[16,15,18],[16,17,18]],"volume":0.728210759438142},"canonical_K_CE":{"K_vertex_5d":[3,2,-1,-1,1],"K_xy_2d":[3.5070196660589774,0.6015009550075456],"K_tiles":[{"corners_5d":[[2,1,-1,-1,1],[3,1,-1,-1,1],[3,2,-1,-1,1],[2,2,-1,-1,1]],"is_thick":true},{"corners_5d":[[3,2,-1,-2,0],[3,2,-1,-1,0],[3,2,-1,-1,1],[3,2,-1,-2,1]],"is_thick":true},{"corners_5d":[[2,2,-1,-1,0],[3,2,-1,-1,0],[3,2,-1,-1,1],[2,2,-1,-1,1]],"is_thick":true},{"corners_5d":[[3,1,-1,-2,1],[3,2,-1,-2,1],[3,2,-1,-1,1],[3,1,-1,-1,1]],"is_thick":false}]},"canonical_K_empire":[{"corners_5d":[[-6,-4,4,7,1],[-5,-4,4,7,1],[-5,-3,4,7,1],[-6,-3,4,7,1]],"is_thick":true},{"corners_5d":[[-6,-1,6,5,-2],[-5,-1,6,5,-2],[-5,0,6,5,-2],[-6,0,6,5,-2]],"is_thick":true},{"corners_5d":[[-6,1,7,4,-4],[-5,1,7,4,-4],[-5,1,7,4,-3],[-6,1,7,4,-3]],"is_thick":true},{"corners_5d":[[-6,2,8,3,-5],[-5,2,8,3,-5],[-5,3,8,3,-5],[-6,3,8,3,-5]],"is_thick":true},{"corners_5d":[[-5,-4,3,6,1],[-5,-4,3,7,1],[-5,-4,3,7,2],[-5,-4,3,6,2]],"is_thick":true},{"corners_5d":[[-5,0,6,4,-3],[-5,0,6,5,-3],[-5,0,6,5,-2],[-5,0,6,4,-2]],"is_thick":true},{"corners_5d":[[-5,1,6,3,-4],[-5,2,6,3,-4],[-5,2,7,3,-4],[-5,1,7,3,-4]],"is_thick":true},{"corners_5d":[[-4,-6,1,7,4],[-3,-6,1,7,4],[-3,-5,1,7,4],[-4,-5,1,7,4]],"is_thick":true},{"corners_5d":[[-4,-5,1,6,3],[-4,-5,2,6,3],[-4,-5,2,7,3],[-4,-5,1,7,3]],"is_thick":true},{"corners_5d":[[-4,-2,3,4,0],[-3,-2,3,4,0],[-3,-2,3,5,0],[-4,-2,3,5,0]],"is_thick":false},{"corners_5d":[[-3,-2,3,4,0],[-3,-2,3,5,0],[-3,-2,3,5,1],[-3,-2,3,4,1]],"is_thick":true},{"corners_5d":[[-4,2,6,2,-4],[-3,2,6,2,-4],[-3,3,6,2,-4],[-4,3,6,2,-4]],"is_thick":true},{"corners_5d":[[-4,3,6,1,-5],[-4,3,7,1,-5],[-4,3,7,2,-5],[-4,3,6,2,-5]],"is_thick":true},{"corners_5d":[[-4,4,7,1,-6],[-3,4,7,1,-6],[-3,4,7,1,-5],[-4,4,7,1,-5]],"is_thick":true},{"corners_5d":[[-2,-7,-2,6,6],[-2,-7,-1,6,6],[-2,-7,-1,7,6],[-2,-7,-2,7,6]],"is_thick":true},{"corners_5d":[[-2,-5,-1,5,4],[-1,-5,-1,5,4],[-1,-5,-1,5,5],[-2,-5,-1,5,5]],"is_thick":true},{"corners_5d":[[-2,-4,0,4,3],[-1,-4,0,4,3],[-1,-3,0,4,3],[-2,-3,0,4,3]],"is_thick":true},{"corners_5d":[[-2,-3,1,4,2],[-2,-3,1,5,2],[-2,-3,1,5,3],[-2,-3,1,4,3]],"is_thick":true},{"corners_5d":[[-2,-2,1,3,1],[-1,-2,1,3,1],[-1,-2,1,3,2],[-2,-2,1,3,2]],"is_thick":true},{"corners_5d":[[-2,1,3,1,-2],[-1,1,3,1,-2],[-1,2,3,1,-2],[-2,2,3,1,-2]],"is_thick":true},{"corners_5d":[[-2,2,4,1,-3],[-2,3,4,1,-3],[-2,3,5,1,-3],[-2,2,5,1,-3]],"is_thick":true},{"corners_5d":[[-2,2,4,1,-3],[-2,2,4,2,-3],[-2,2,4,2,-2],[-2,2,4,1,-2]],"is_thick":true},{"corners_5d":[[-2,3,4,0,-4],[-1,3,4,0,-4],[-1,3,4,0,-3],[-2,3,4,0,-3]],"is_thick":true},{"corners_5d":[[-2,4,5,-1,-5],[-1,4,5,-1,-5],[-1,5,5,-1,-5],[-2,5,5,-1,-5]],"is_thick":true},{"corners_5d":[[-2,5,6,-1,-6],[-2,5,6,0,-6],[-2,5,6,0,-5],[-2,5,6,-1,-5]],"is_thick":true},{"corners_5d":[[-2,6,6,-2,-7],[-2,6,7,-2,-7],[-2,6,7,-1,-7],[-2,6,6,-1,-7]],"is_thick":true},{"corners_5d":[[-1,-6,-2,5,6],[0,-6,-2,5,6],[0,-5,-2,5,6],[-1,-5,-2,5,6]],"is_thick":true},{"corners_5d":[[-1,-5,-2,4,5],[0,-5,-2,4,5],[0,-5,-2,5,5],[-1,-5,-2,5,5]],"is_thick":false},{"corners_5d":[[-1,-5,-2,4,5],[-1,-5,-1,4,5],[-1,-5,-1,5,5],[-1,-5,-2,5,5]],"is_thick":true},{"corners_5d":[[0,-5,-2,4,5],[0,-5,-2,5,5],[0,-5,-2,5,6],[0,-5,-2,4,6]],"is_thick":true},{"corners_5d":[[-1,-4,-1,4,4],[0,-4,-1,4,4],[0,-4,-1,4,5],[-1,-4,-1,4,5]],"is_thick":true},{"corners_5d":[[-1,-4,-1,4,4],[-1,-4,0,4,4],[-1,-4,0,5,4],[-1,-4,-1,5,4]],"is_thick":true},{"corners_5d":[[-1,-1,1,2,1],[0,-1,1,2,1],[0,0,1,2,1],[-1,0,1,2,1]],"is_thick":true},{"corners_5d":[[-1,1,2,1,-1],[0,1,2,1,-1],[0,1,2,1,0],[-1,1,2,1,0]],"is_thick":true},{"corners_5d":[[-1,2,3,0,-2],[0,2,3,0,-2],[0,3,3,0,-2],[-1,3,3,0,-2]],"is_thick":true},{"corners_5d":[[-1,3,3,-1,-3],[0,3,3,-1,-3],[0,3,3,0,-3],[-1,3,3,0,-3]],"is_thick":false},{"corners_5d":[[0,3,3,-1,-3],[0,3,3,0,-3],[0,3,3,0,-2],[0,3,3,-1,-2]],"is_thick":true},{"corners_5d":[[-1,4,4,-1,-4],[0,4,4,-1,-4],[0,5,4,-1,-4],[-1,5,4,-1,-4]],"is_thick":true},{"corners_5d":[[-1,4,4,-1,-4],[-1,4,5,-1,-4],[-1,4,5,0,-4],[-1,4,4,0,-4]],"is_thick":true},{"corners_5d":[[0,-4,-2,3,4],[0,-3,-2,3,4],[0,-3,-1,3,4],[0,-4,-1,3,4]],"is_thick":true},{"corners_5d":[[0,-1,0,1,1],[0,-1,0,2,1],[0,-1,0,2,2],[0,-1,0,1,2]],"is_thick":true},{"corners_5d":[[0,0,1,1,0],[0,0,1,2,0],[0,0,1,2,1],[0,0,1,1,1]],"is_thick":true},{"corners_5d":[[0,1,1,0,-1],[0,2,1,0,-1],[0,2,2,0,-1],[0,1,2,0,-1]],"is_thick":true},{"corners_5d":[[0,4,3,-2,-4],[0,4,3,-1,-4],[0,4,3,-1,-3],[0,4,3,-2,-3]],"is_thick":true},{"corners_5d":[[1,-2,-2,1,3],[1,-2,-1,1,3],[1,-2,-1,2,3],[1,-2,-2,2,3]],"is_thick":true},{"corners_5d":[[1,-1,-1,1,2],[2,-1,-1,1,2],[2,-1,-1,1,3],[1,-1,-1,1,3]],"is_thick":true},{"corners_5d":[[1,-1,-1,1,2],[1,0,-1,1,2],[1,0,0,1,2],[1,-1,0,1,2]],"is_thick":true},{"corners_5d":[[1,1,0,-1,0],[2,1,0,-1,0],[2,2,0,-1,0],[1,2,0,-1,0]],"is_thick":true},{"corners_5d":[[1,1,0,-1,0],[2,1,0,-1,0],[2,1,0,0,0],[1,1,0,0,0]],"is_thick":false},{"corners_5d":[[2,1,0,-1,0],[2,1,0,0,0],[2,1,0,0,1],[2,1,0,-1,1]],"is_thick":true},{"corners_5d":[[1,2,1,-1,-1],[2,2,1,-1,-1],[2,3,1,-1,-1],[1,3,1,-1,-1]],"is_thick":true},{"corners_5d":[[1,2,1,-1,-1],[1,2,1,0,-1],[1,2,1,0,0],[1,2,1,-1,0]],"is_thick":true},{"corners_5d":[[1,3,1,-2,-2],[1,3,2,-2,-2],[1,3,2,-1,-2],[1,3,1,-1,-2]],"is_thick":true},{"corners_5d":[[2,-6,-5,3,8],[3,-6,-5,3,8],[3,-5,-5,3,8],[2,-5,-5,3,8]],"is_thick":true},{"corners_5d":[[2,-4,-4,2,6],[3,-4,-4,2,6],[3,-3,-4,2,6],[2,-3,-4,2,6]],"is_thick":true},{"corners_5d":[[2,-2,-3,1,4],[3,-2,-3,1,4],[3,-2,-3,1,5],[2,-2,-3,1,5]],"is_thick":true},{"corners_5d":[[2,-1,-2,0,3],[3,-1,-2,0,3],[3,0,-2,0,3],[2,0,-2,0,3]],"is_thick":true},{"corners_5d":[[2,1,-1,-1,1],[3,1,-1,-1,1],[3,1,-1,-1,2],[2,1,-1,-1,2]],"is_thick":true},{"corners_5d":[[2,1,-1,-1,1],[2,1,0,-1,1],[2,1,0,0,1],[2,1,-1,0,1]],"is_thick":true},{"corners_5d":[[2,2,0,-2,0],[3,2,0,-2,0],[3,3,0,-2,0],[2,3,0,-2,0]],"is_thick":true},{"corners_5d":[[2,4,1,-3,-2],[3,4,1,-3,-2],[3,5,1,-3,-2],[2,5,1,-3,-2]],"is_thick":true},{"corners_5d":[[2,6,2,-4,-4],[3,6,2,-4,-4],[3,6,2,-4,-3],[2,6,2,-4,-3]],"is_thick":true},{"corners_5d":[[2,7,3,-5,-5],[3,7,3,-5,-5],[3,8,3,-5,-5],[2,8,3,-5,-5]],"is_thick":true},{"corners_5d":[[3,-4,-5,1,6],[4,-4,-5,1,6],[4,-3,-5,1,6],[3,-3,-5,1,6]],"is_thick":true},{"corners_5d":[[3,-3,-4,1,5],[3,-3,-4,2,5],[3,-3,-4,2,6],[3,-3,-4,1,6]],"is_thick":true},{"corners_5d":[[3,-2,-4,0,4],[4,-2,-4,0,4],[4,-2,-4,0,5],[3,-2,-4,0,5]],"is_thick":true},{"corners_5d":[[3,-1,-3,-1,3],[4,-1,-3,-1,3],[4,0,-3,-1,3],[3,0,-3,-1,3]],"is_thick":true},{"corners_5d":[[3,0,-2,-1,2],[3,0,-2,0,2],[3,0,-2,0,3],[3,0,-2,-1,3]],"is_thick":true},{"corners_5d":[[3,1,-2,-2,1],[4,1,-2,-2,1],[4,2,-2,-2,1],[3,2,-2,-2,1]],"is_thick":true},{"corners_5d":[[3,1,-2,-2,1],[4,1,-2,-2,1],[4,1,-2,-2,2],[3,1,-2,-2,2]],"is_thick":true},{"corners_5d":[[3,1,-2,-2,1],[3,2,-2,-2,1],[3,2,-1,-2,1],[3,1,-1,-2,1]],"is_thick":true},{"corners_5d":[[3,1,-2,-2,1],[3,1,-1,-2,1],[3,1,-1,-1,1],[3,1,-2,-1,1]],"is_thick":true},{"corners_5d":[[3,1,-2,-2,1],[3,1,-2,-1,1],[3,1,-2,-1,2],[3,1,-2,-2,2]],"is_thick":true},{"corners_5d":[[3,2,-2,-2,1],[4,2,-2,-2,1],[4,2,-1,-2,1],[3,2,-1,-2,1]],"is_thick":false},{"corners_5d":[[4,1,-2,-2,1],[4,2,-2,-2,1],[4,2,-2,-2,2],[4,1,-2,-2,2]],"is_thick":false},{"corners_5d":[[3,3,-1,-3,-1],[4,3,-1,-3,-1],[4,3,-1,-3,0],[3,3,-1,-3,0]],"is_thick":true},{"corners_5d":[[3,4,0,-4,-2],[4,4,0,-4,-2],[4,5,0,-4,-2],[3,5,0,-4,-2]],"is_thick":true},{"corners_5d":[[3,5,1,-4,-3],[3,5,1,-3,-3],[3,5,1,-3,-2],[3,5,1,-4,-2]],"is_thick":true},{"corners_5d":[[3,6,1,-5,-4],[4,6,1,-5,-4],[4,6,1,-5,-3],[3,6,1,-5,-3]],"is_thick":true},{"corners_5d":[[4,-4,-6,1,7],[5,-4,-6,1,7],[5,-4,-6,1,8],[4,-4,-6,1,8]],"is_thick":true},{"corners_5d":[[4,-2,-5,-1,5],[5,-2,-5,-1,5],[5,-2,-5,0,5],[4,-2,-5,0,5]],"is_thick":false},{"corners_5d":[[5,-2,-5,-1,5],[5,-2,-5,0,5],[5,-2,-5,0,6],[5,-2,-5,-1,6]],"is_thick":true},{"corners_5d":[[4,-1,-4,-1,4],[5,-1,-4,-1,4],[5,0,-4,-1,4],[4,0,-4,-1,4]],"is_thick":true},{"corners_5d":[[4,-1,-4,-1,4],[4,-1,-3,-1,4],[4,-1,-3,0,4],[4,-1,-4,0,4]],"is_thick":true},{"corners_5d":[[4,2,-2,-3,1],[5,2,-2,-3,1],[5,3,-2,-3,1],[4,3,-2,-3,1]],"is_thick":true},{"corners_5d":[[4,3,-2,-4,0],[5,3,-2,-4,0],[5,3,-2,-3,0],[4,3,-2,-3,0]],"is_thick":false},{"corners_5d":[[4,3,-2,-4,0],[4,3,-1,-4,0],[4,3,-1,-3,0],[4,3,-2,-3,0]],"is_thick":true},{"corners_5d":[[5,3,-2,-4,0],[5,3,-2,-3,0],[5,3,-2,-3,1],[5,3,-2,-4,1]],"is_thick":true},{"corners_5d":[[4,4,-1,-4,-1],[5,4,-1,-4,-1],[5,4,-1,-4,0],[4,4,-1,-4,0]],"is_thick":true},{"corners_5d":[[4,4,-1,-4,-1],[4,4,0,-4,-1],[4,4,0,-3,-1],[4,4,-1,-3,-1]],"is_thick":true},{"corners_5d":[[4,7,1,-6,-4],[5,7,1,-6,-4],[5,8,1,-6,-4],[4,8,1,-6,-4]],"is_thick":true},{"corners_5d":[[6,-2,-7,-2,6],[6,-2,-6,-2,6],[6,-2,-6,-1,6],[6,-2,-7,-1,6]],"is_thick":true},{"corners_5d":[[6,1,-5,-4,3],[7,1,-5,-4,3],[7,2,-5,-4,3],[6,2,-5,-4,3]],"is_thick":true},{"corners_5d":[[6,2,-4,-4,2],[6,3,-4,-4,2],[6,3,-3,-4,2],[6,2,-3,-4,2]],"is_thick":true},{"corners_5d":[[6,2,-4,-4,2],[6,2,-4,-3,2],[6,2,-4,-3,3],[6,2,-4,-4,3]],"is_thick":true},{"corners_5d":[[6,3,-4,-5,1],[7,3,-4,-5,1],[7,3,-4,-5,2],[6,3,-4,-5,2]],"is_thick":true},{"corners_5d":[[6,6,-2,-7,-2],[6,6,-1,-7,-2],[6,6,-1,-6,-2],[6,6,-2,-6,-2]],"is_thick":true},{"corners_5d":[[7,1,-6,-4,4],[8,1,-6,-4,4],[8,1,-6,-4,5],[7,1,-6,-4,5]],"is_thick":true},{"corners_5d":[[7,2,-5,-5,3],[8,2,-5,-5,3],[8,3,-5,-5,3],[7,3,-5,-5,3]],"is_thick":true},{"corners_5d":[[7,4,-4,-6,1],[8,4,-4,-6,1],[8,5,-4,-6,1],[7,5,-4,-6,1]],"is_thick":true},{"corners_5d":[[-6,-3,4,6,0],[-5,-3,4,6,0],[-5,-3,4,7,0],[-6,-3,4,7,0]],"is_thick":false},{"corners_5d":[[-6,-3,4,6,0],[-6,-3,5,6,0],[-6,-3,5,7,0],[-6,-3,4,7,0]],"is_thick":true},{"corners_5d":[[-5,-3,4,6,0],[-5,-3,4,7,0],[-5,-3,4,7,1],[-5,-3,4,6,1]],"is_thick":true},{"corners_5d":[[-6,0,6,4,-3],[-5,0,6,4,-3],[-5,0,6,5,-3],[-6,0,6,5,-3]],"is_thick":false},{"corners_5d":[[-6,0,6,4,-3],[-6,0,7,4,-3],[-6,0,7,5,-3],[-6,0,6,5,-3]],"is_thick":true},{"corners_5d":[[-2,-6,-1,6,5],[-1,-6,-1,6,5],[-1,-6,-1,6,6],[-2,-6,-1,6,6]],"is_thick":true},{"corners_5d":[[-2,-6,-1,6,5],[-2,-5,-1,6,5],[-2,-5,0,6,5],[-2,-6,0,6,5]],"is_thick":true},{"corners_5d":[[-2,-1,2,3,0],[-1,-1,2,3,0],[-1,-1,2,3,1],[-2,-1,2,3,1]],"is_thick":true},{"corners_5d":[[-1,0,1,1,0],[0,0,1,1,0],[0,0,1,2,0],[-1,0,1,2,0]],"is_thick":false},{"corners_5d":[[-1,0,1,1,0],[-1,0,2,1,0],[-1,0,2,2,0],[-1,0,1,2,0]],"is_thick":true},{"corners_5d":[[-1,5,4,-2,-5],[-1,5,5,-2,-5],[-1,5,5,-1,-5],[-1,5,4,-1,-5]],"is_thick":true},{"corners_5d":[[1,0,-1,0,1],[2,0,-1,0,1],[2,0,-1,0,2],[1,0,-1,0,2]],"is_thick":true},{"corners_5d":[[2,-3,-4,1,5],[3,-3,-4,1,5],[3,-3,-4,2,5],[2,-3,-4,2,5]],"is_thick":false},{"corners_5d":[[2,-3,-4,1,5],[2,-3,-3,1,5],[2,-3,-3,2,5],[2,-3,-4,2,5]],"is_thick":true},{"corners_5d":[[2,0,-2,-1,2],[3,0,-2,-1,2],[3,0,-2,0,2],[2,0,-2,0,2]],"is_thick":false},{"corners_5d":[[2,0,-2,-1,2],[2,0,-1,-1,2],[2,0,-1,0,2],[2,0,-2,0,2]],"is_thick":true},{"corners_5d":[[2,2,-1,-2,0],[3,2,-1,-2,0],[3,2,0,-2,0],[2,2,0,-2,0]],"is_thick":false},{"corners_5d":[[2,2,-1,-2,0],[3,2,-1,-2,0],[3,2,-1,-1,0],[2,2,-1,-1,0]],"is_thick":false},{"corners_5d":[[2,2,-1,-2,0],[2,2,0,-2,0],[2,2,0,-1,0],[2,2,-1,-1,0]],"is_thick":true},{"corners_5d":[[3,2,-1,-2,0],[4,2,-1,-2,0],[4,2,-1,-2,1],[3,2,-1,-2,1]],"is_thick":true},{"corners_5d":[[3,2,-1,-2,0],[3,3,-1,-2,0],[3,3,0,-2,0],[3,2,0,-2,0]],"is_thick":true},{"corners_5d":[[2,5,1,-4,-3],[3,5,1,-4,-3],[3,5,1,-3,-3],[2,5,1,-3,-3]],"is_thick":false},{"corners_5d":[[2,5,1,-4,-3],[2,5,2,-4,-3],[2,5,2,-3,-3],[2,5,1,-3,-3]],"is_thick":true},{"corners_5d":[[4,0,-4,-2,3],[4,0,-3,-2,3],[4,0,-3,-1,3],[4,0,-4,-1,3]],"is_thick":true},{"corners_5d":[[6,-1,-6,-2,5],[7,-1,-6,-2,5],[7,-1,-6,-2,6],[6,-1,-6,-2,6]],"is_thick":true},{"corners_5d":[[6,4,-3,-5,0],[7,4,-3,-5,0],[7,4,-3,-5,1],[6,4,-3,-5,1]],"is_thick":true},{"corners_5d":[[7,0,-7,-4,5],[7,0,-6,-4,5],[7,0,-6,-3,5],[7,0,-7,-3,5]],"is_thick":true},{"corners_5d":[[7,5,-4,-7,0],[7,5,-3,-7,0],[7,5,-3,-6,0],[7,5,-4,-6,0]],"is_thick":true},{"corners_5d":[[-7,-1,7,6,-3],[-6,-1,7,6,-3],[-6,-1,7,6,-2],[-7,-1,7,6,-2]],"is_thick":true},{"corners_5d":[[-6,0,6,5,-3],[-5,0,6,5,-3],[-5,0,6,5,-2],[-6,0,6,5,-2]],"is_thick":true},{"corners_5d":[[-6,-2,5,6,-1],[-5,-2,5,6,-1],[-5,-2,5,6,0],[-6,-2,5,6,0]],"is_thick":true},{"corners_5d":[[-6,-3,4,7,0],[-5,-3,4,7,0],[-5,-3,4,7,1],[-6,-3,4,7,1]],"is_thick":true},{"corners_5d":[[-6,-5,3,8,2],[-5,-5,3,8,2],[-5,-5,3,8,3],[-6,-5,3,8,3]],"is_thick":true},{"corners_5d":[[-4,1,5,3,-3],[-3,1,5,3,-3],[-3,1,5,3,-2],[-4,1,5,3,-2]],"is_thick":true},{"corners_5d":[[-4,-2,3,5,0],[-3,-2,3,5,0],[-3,-2,3,5,1],[-4,-2,3,5,1]],"is_thick":true},{"corners_5d":[[-4,-4,2,6,2],[-3,-4,2,6,2],[-3,-4,2,6,3],[-4,-4,2,6,3]],"is_thick":true},{"corners_5d":[[-1,6,5,-2,-6],[0,6,5,-2,-6],[0,6,5,-2,-5],[-1,6,5,-2,-5]],"is_thick":true},{"corners_5d":[[-1,3,3,0,-3],[0,3,3,0,-3],[0,3,3,0,-2],[-1,3,3,0,-2]],"is_thick":true},{"corners_5d":[[-1,0,1,2,0],[0,0,1,2,0],[0,0,1,2,1],[-1,0,1,2,1]],"is_thick":true},{"corners_5d":[[-1,-2,0,3,2],[0,-2,0,3,2],[0,-2,0,3,3],[-1,-2,0,3,3]],"is_thick":true},{"corners_5d":[[-1,-5,-2,5,5],[0,-5,-2,5,5],[0,-5,-2,5,6],[-1,-5,-2,5,6]],"is_thick":true},{"corners_5d":[[1,4,2,-2,-3],[2,4,2,-2,-3],[2,4,2,-2,-2],[1,4,2,-2,-2]],"is_thick":true},{"corners_5d":[[1,1,0,0,0],[2,1,0,0,0],[2,1,0,0,1],[1,1,0,0,1]],"is_thick":true},{"corners_5d":[[1,-4,-3,3,5],[2,-4,-3,3,5],[2,-4,-3,3,6],[1,-4,-3,3,6]],"is_thick":true},{"corners_5d":[[2,8,3,-5,-6],[3,8,3,-5,-6],[3,8,3,-5,-5],[2,8,3,-5,-5]],"is_thick":true},{"corners_5d":[[2,5,1,-3,-3],[3,5,1,-3,-3],[3,5,1,-3,-2],[2,5,1,-3,-2]],"is_thick":true},{"corners_5d":[[2,3,0,-2,-1],[3,3,0,-2,-1],[3,3,0,-2,0],[2,3,0,-2,0]],"is_thick":true},{"corners_5d":[[2,0,-2,0,2],[3,0,-2,0,2],[3,0,-2,0,3],[2,0,-2,0,3]],"is_thick":true},{"corners_5d":[[2,-3,-4,2,5],[3,-3,-4,2,5],[3,-3,-4,2,6],[2,-3,-4,2,6]],"is_thick":true},{"corners_5d":[[2,-5,-5,3,7],[3,-5,-5,3,7],[3,-5,-5,3,8],[2,-5,-5,3,8]],"is_thick":true},{"corners_5d":[[3,1,-2,-2,2],[4,1,-2,-2,2],[4,1,-2,-1,2],[3,1,-2,-1,2]],"is_thick":false},{"corners_5d":[[4,6,0,-5,-3],[5,6,0,-5,-3],[5,6,0,-5,-2],[4,6,0,-5,-2]],"is_thick":true},{"corners_5d":[[4,3,-2,-3,0],[5,3,-2,-3,0],[5,3,-2,-3,1],[4,3,-2,-3,1]],"is_thick":true},{"corners_5d":[[4,1,-3,-2,2],[5,1,-3,-2,2],[5,1,-3,-2,3],[4,1,-3,-2,3]],"is_thick":true},{"corners_5d":[[4,-2,-5,0,5],[5,-2,-5,0,5],[5,-2,-5,0,6],[4,-2,-5,0,6]],"is_thick":true},{"corners_5d":[[7,5,-4,-6,0],[8,5,-4,-6,0],[8,5,-4,-6,1],[7,5,-4,-6,1]],"is_thick":true},{"corners_5d":[[7,3,-5,-5,2],[8,3,-5,-5,2],[8,3,-5,-5,3],[7,3,-5,-5,3]],"is_thick":true},{"corners_5d":[[2,-6,-5,3,7],[2,-5,-5,3,7],[2,-5,-5,3,8],[2,-6,-5,3,8]],"is_thick":false},{"corners_5d":[[-1,-6,-2,5,5],[-1,-5,-2,5,5],[-1,-5,-1,5,5],[-1,-6,-1,5,5]],"is_thick":true},{"corners_5d":[[-1,-6,-2,5,5],[-1,-5,-2,5,5],[-1,-5,-2,5,6],[-1,-6,-2,5,6]],"is_thick":false},{"corners_5d":[[5,-4,-7,0,7],[5,-3,-7,0,7],[5,-3,-6,0,7],[5,-4,-6,0,7]],"is_thick":true},{"corners_5d":[[2,-4,-4,2,5],[2,-3,-4,2,5],[2,-3,-3,2,5],[2,-4,-3,2,5]],"is_thick":true},{"corners_5d":[[2,-4,-4,2,5],[2,-3,-4,2,5],[2,-3,-4,2,6],[2,-4,-4,2,6]],"is_thick":false},{"corners_5d":[[-3,-4,1,5,2],[-3,-3,1,5,2],[-3,-3,2,5,2],[-3,-4,2,5,2]],"is_thick":true},{"corners_5d":[[-6,-4,4,7,0],[-6,-3,4,7,0],[-6,-3,5,7,0],[-6,-4,5,7,0]],"is_thick":true},{"corners_5d":[[-6,-4,4,7,0],[-6,-3,4,7,0],[-6,-3,4,7,1],[-6,-4,4,7,1]],"is_thick":false},{"corners_5d":[[7,-1,-7,-3,5],[7,0,-7,-3,5],[7,0,-6,-3,5],[7,-1,-6,-3,5]],"is_thick":true},{"corners_5d":[[7,-1,-7,-3,5],[7,0,-7,-3,5],[7,0,-7,-3,6],[7,-1,-7,-3,6]],"is_thick":false},{"corners_5d":[[5,-1,-5,-2,4],[5,-1,-5,-1,4],[5,-1,-5,-1,5],[5,-1,-5,-2,5]],"is_thick":true},{"corners_5d":[[2,-1,-2,0,2],[2,0,-2,0,2],[2,0,-1,0,2],[2,-1,-1,0,2]],"is_thick":true},{"corners_5d":[[2,-1,-2,0,2],[2,0,-2,0,2],[2,0,-2,0,3],[2,-1,-2,0,3]],"is_thick":false},{"corners_5d":[[-1,-1,1,2,0],[-1,0,1,2,0],[-1,0,2,2,0],[-1,-1,2,2,0]],"is_thick":true},{"corners_5d":[[-1,-1,1,2,0],[-1,0,1,2,0],[-1,0,1,2,1],[-1,-1,1,2,1]],"is_thick":false},{"corners_5d":[[-6,-1,6,5,-3],[-6,0,6,5,-3],[-6,0,7,5,-3],[-6,-1,7,5,-3]],"is_thick":true},{"corners_5d":[[-6,-1,6,5,-3],[-6,0,6,5,-3],[-6,0,6,5,-2],[-6,-1,6,5,-2]],"is_thick":false},{"corners_5d":[[5,1,-4,-3,2],[5,2,-4,-3,2],[5,2,-3,-3,2],[5,1,-3,-3,2]],"is_thick":true},{"corners_5d":[[2,1,-1,-1,0],[2,2,-1,-1,0],[2,2,0,-1,0],[2,1,0,-1,0]],"is_thick":true},{"corners_5d":[[2,1,-1,-1,0],[2,2,-1,-1,0],[2,2,-1,-1,1],[2,1,-1,-1,1]],"is_thick":false},{"corners_5d":[[2,1,-1,-1,0],[2,1,0,-1,0],[2,1,0,-1,1],[2,1,-1,-1,1]],"is_thick":false},{"corners_5d":[[-3,1,4,2,-3],[-3,2,4,2,-3],[-3,2,5,2,-3],[-3,1,5,2,-3]],"is_thick":true},{"corners_5d":[[7,2,-5,-5,2],[7,3,-5,-5,2],[7,3,-5,-5,3],[7,2,-5,-5,3]],"is_thick":false},{"corners_5d":[[4,2,-2,-3,0],[4,3,-2,-3,0],[4,3,-1,-3,0],[4,2,-1,-3,0]],"is_thick":true},{"corners_5d":[[4,2,-2,-3,0],[4,3,-2,-3,0],[4,3,-2,-3,1],[4,2,-2,-3,1]],"is_thick":false},{"corners_5d":[[-1,2,3,0,-3],[-1,3,3,0,-3],[-1,3,3,0,-2],[-1,2,3,0,-2]],"is_thick":false},{"corners_5d":[[7,4,-4,-6,0],[7,5,-4,-6,0],[7,5,-3,-6,0],[7,4,-3,-6,0]],"is_thick":true},{"corners_5d":[[7,4,-4,-6,0],[7,5,-4,-6,0],[7,5,-4,-6,1],[7,4,-4,-6,1]],"is_thick":false},{"corners_5d":[[5,4,-2,-5,-1],[5,5,-2,-5,-1],[5,5,-1,-5,-1],[5,4,-1,-5,-1]],"is_thick":true},{"corners_5d":[[2,4,1,-3,-3],[2,5,1,-3,-3],[2,5,2,-3,-3],[2,4,2,-3,-3]],"is_thick":true},{"corners_5d":[[2,4,1,-3,-3],[2,5,1,-3,-3],[2,5,1,-3,-2],[2,4,1,-3,-2]],"is_thick":false},{"corners_5d":[[-3,4,6,0,-6],[-3,5,6,0,-6],[-3,5,7,0,-6],[-3,4,7,0,-6]],"is_thick":true},{"corners_5d":[[2,7,3,-5,-6],[2,8,3,-5,-6],[2,8,3,-5,-5],[2,7,3,-5,-5]],"is_thick":false},{"corners_5d":[[-3,-6,0,6,4],[-3,-6,0,7,4],[-3,-6,0,7,5],[-3,-6,0,6,5]],"is_thick":true},{"corners_5d":[[5,2,-3,-4,1],[5,2,-3,-3,1],[5,2,-3,-3,2],[5,2,-3,-4,2]],"is_thick":true},{"corners_5d":[[2,2,0,-2,-1],[2,3,0,-2,-1],[2,3,0,-2,0],[2,2,0,-2,0]],"is_thick":false},{"corners_5d":[[2,2,0,-2,-1],[2,2,0,-1,-1],[2,2,0,-1,0],[2,2,0,-2,0]],"is_thick":true},{"corners_5d":[[-3,2,5,1,-4],[-3,2,5,2,-4],[-3,2,5,2,-3],[-3,2,5,1,-3]],"is_thick":true},{"corners_5d":[[5,7,0,-7,-4],[5,7,0,-6,-4],[5,7,0,-6,-3],[5,7,0,-7,-3]],"is_thick":true},{"corners_5d":[[3,1,-2,-1,1],[3,1,-1,-1,1],[3,1,-1,-1,2],[3,1,-2,-1,2]],"is_thick":false}]}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+window.THREE = THREE;
+window.OrbitControls = OrbitControls;
+let DATA = null;
+try {
+  DATA = JSON.parse(document.getElementById('kv2-data').textContent);
+} catch (e) {
+  console.error('parse error:', e);
+}
+window.DATA = DATA;
+</script>
+
+<script>
+"use strict";
+
+// ============================================================================
+// Wait for module + data
+// ============================================================================
+let DATA = null;
+let THREE_NS = null;
+let OrbitCtl = null;
+(function ready(t) {
+  if (window.DATA && window.THREE && window.OrbitControls) {
+    DATA = window.DATA;
+    THREE_NS = window.THREE;
+    OrbitCtl = window.OrbitControls;
+    init();
+  } else if (t < 200) {
+    setTimeout(() => ready(t+1), 25);
+  } else {
+    document.body.insertAdjacentHTML('afterbegin',
+      '<div style="background:#440;color:#fdc;padding:10px">⚠ deps not loaded</div>');
+  }
+})(0);
+
+// ============================================================================
+// Cut-and-project math
+// ============================================================================
+const NS = 'http://www.w3.org/2000/svg';
+const SQRT_25 = Math.sqrt(2/5);
+const SQRT_15 = 1/Math.sqrt(5);
+
+let B = null; // 5x5 matrix [B1, B2, B3, B4, B5][j]
+let W_normals = null;
+let W_offsets = null;
+let canonicalK = null;
+let canonicalEmpire = null;
+let cutWindowMesh = null;
+let empireWindowMesh = null;
+let gammaSphere = null;
+
+let state = {
+  tick: 0,
+  cycleN: 5,        // Z_5
+  playing: false,
+  gamma_radius: 0.10,  // |γ̃| in E⊥ (small offset from singular Sun for non-degenerate Penrose)
+};
+
+// 5D vector operations
+function dot5(a, b) { let s=0; for (let i=0;i<5;i++) s += a[i]*b[i]; return s; }
+
+function project5_to_E(v) {
+  // physical 2D
+  return [dot5(v, B.B1), dot5(v, B.B2)];
+}
+function project5_to_Eperp(v) {
+  return [dot5(v, B.B3), dot5(v, B.B4), dot5(v, B.B5)];
+}
+
+// Compute γ̃ in 5D for current tick
+// Use a 5-tuple γ such that γ_perp ∈ I-plane (B3, B4) only, no B5 component.
+// γ rotates by 144° in (B3, B4) per tick (= cyclic-shift σ effect on perp).
+// Equivalently: γ_perp = (gamma_radius * cos(144°*t), gamma_radius * sin(144°*t), 0)
+function gamma_5d_for_tick(t) {
+  // Build γ in (B3, B4) plane: γ = a*B3 + b*B4 with a, b chosen so γ_perp rotates 144°/tick.
+  // γ ∈ R^5, γ = a*B3 + b*B4.
+  // γ_perp[0] = γ · B3 = a*1 + b*0 = a  (since B3 unit, B3⊥B4)
+  // γ_perp[1] = γ · B4 = b
+  // γ_perp[2] = γ · B5 = 0 (since B3, B4 ⊥ B5)
+  const ang = (144 * t * Math.PI/180);
+  const a = state.gamma_radius * Math.cos(ang);
+  const b = state.gamma_radius * Math.sin(ang);
+  const g = [];
+  for (let j = 0; j < 5; j++) g.push(a*B.B3[j] + b*B.B4[j]);
+  return g;
+}
+
+// In-cut-window test: π⊥(λ - γ̃) ∈ W
+function inCutWindow(perp_pt, gamma_perp) {
+  for (let i = 0; i < W_normals.length; i++) {
+    const n = W_normals[i];
+    const proj = n[0]*(perp_pt[0]-gamma_perp[0]) + n[1]*(perp_pt[1]-gamma_perp[1]) + n[2]*(perp_pt[2]-gamma_perp[2]);
+    if (proj > W_offsets[i] + 1e-9) return false;
+  }
+  return true;
+}
+
+// Generate Penrose patch via cut-and-project + BFS over Z^5
+function generatePatch(gamma_5d, R) {
+  const gamma_perp = project5_to_Eperp(gamma_5d);
+  const accepted = [];
+  const aKey = new Map();
+  const visited = new Set();
+  const queue = [];
+  // Seed near where γ̃ projects to physical (= 0 since γ̃ has no E component)
+  // Just start from origin.
+  const start = [0,0,0,0,0];
+  visited.add(start.join(','));
+  queue.push(start);
+  let head = 0;
+  while (head < queue.length) {
+    const v = queue[head++];
+    const perp = project5_to_Eperp(v);
+    if (!inCutWindow(perp, gamma_perp)) continue;
+    const xy = project5_to_E(v);
+    if (xy[0]*xy[0] + xy[1]*xy[1] > R*R) continue;
+    aKey.set(v.join(','), accepted.length);
+    accepted.push({ k: v.slice(), xy, perp });
+    for (let p = 0; p < 5; p++) {
+      for (const d of [-1, 1]) {
+        const next = v.slice(); next[p] += d;
+        const key = next.join(',');
+        if (!visited.has(key)) { visited.add(key); queue.push(next); }
+      }
+    }
+  }
+  return { accepted, aKey };
+}
+
+// Find rhombi: for each accepted vertex v and each (r, s), check if v+e_r, v+e_s, v+e_r+e_s are accepted
+function findRhombi(accepted, aKey) {
+  const rhombi = [];
+  for (const a of accepted) {
+    const v = a.k;
+    for (let r = 0; r < 5; r++) {
+      for (let s = r+1; s < 5; s++) {
+        const vr = v.slice(); vr[r] += 1;
+        const vs = v.slice(); vs[s] += 1;
+        const vrs = v.slice(); vrs[r] += 1; vrs[s] += 1;
+        const ir = aKey.get(vr.join(','));
+        const is = aKey.get(vs.join(','));
+        const irs = aKey.get(vrs.join(','));
+        if (ir !== undefined && is !== undefined && irs !== undefined) {
+          const angDist = Math.min(Math.abs(r-s), 5-Math.abs(r-s));
+          rhombi.push({
+            corners_5d: [v, vr, vrs, vs],
+            corners_xy: [a.xy, accepted[ir].xy, accepted[irs].xy, accepted[is].xy],
+            is_thick: angDist === 1,
+          });
+        }
+      }
+    }
+  }
+  return rhombi;
+}
+
+// Cyclic-shift permutation σ: (v_0,...,v_4) → (v_4, v_0, v_1, v_2, v_3)
+function sigma(v) {
+  return [v[4], v[0], v[1], v[2], v[3]];
+}
+function sigmaPow(v, t) {
+  let r = v.slice();
+  for (let i = 0; i < t; i++) r = sigma(r);
+  return r;
+}
+
+// Compute the K-CE 5-tuples for tick t (= σ^t applied to canonical K-CE corners)
+function K_tiles_for_tick(t) {
+  return canonicalK.K_tiles.map(rh => ({
+    corners_5d: rh.corners_5d.map(c => sigmaPow(c, t)),
+    is_thick: rh.is_thick,
+  }));
+}
+function K_empire_for_tick(t) {
+  return canonicalEmpire.map(rh => ({
+    corners_5d: rh.corners_5d.map(c => sigmaPow(c, t)),
+    is_thick: rh.is_thick,
+  }));
+}
+
+// Canonical key for a rhombus: sorted tuple-of-5-tuples
+function rhKey(corners_5d) {
+  const strs = corners_5d.map(c => c.join(','));
+  strs.sort();
+  return strs.join('|');
+}
+
+// ============================================================================
+// 2D physical render
+// ============================================================================
+function render2D() {
+  const tilesGroup = document.getElementById('g-tiles');
+  const overlayGroup = document.getElementById('g-overlay');
+  tilesGroup.innerHTML = ''; overlayGroup.innerHTML = '';
+
+  const tick = state.tick;
+  const gamma5 = gamma_5d_for_tick(tick);
+  const R = DATA.R;
+  const t0 = performance.now();
+  const { accepted, aKey } = generatePatch(gamma5, R);
+  const rhombi = findRhombi(accepted, aKey);
+  const t1 = performance.now();
+
+  // Determine which rhombi are K-CE / empire for this tick
+  const K_tiles_now = K_tiles_for_tick(tick);
+  const empire_tiles_now = K_empire_for_tick(tick);
+  const K_keys = new Set(K_tiles_now.map(t => rhKey(t.corners_5d)));
+  const emp_keys = new Set(empire_tiles_now.map(t => rhKey(t.corners_5d)));
+
+  let nCE = 0, nEmp = 0;
+  // Render in order: off, then empire, then CE on top
+  const layer_off = [], layer_emp = [], layer_ce = [];
+  for (const rh of rhombi) {
+    const k = rhKey(rh.corners_5d);
+    if (K_keys.has(k)) layer_ce.push(rh);
+    else if (emp_keys.has(k)) layer_emp.push(rh);
+    else layer_off.push(rh);
+  }
+  function add(rh, fill, stroke, sw) {
+    const pts = rh.corners_xy.map(p => `${p[0].toFixed(4)},${p[1].toFixed(4)}`).join(' ');
+    const poly = document.createElementNS(NS, 'polygon');
+    poly.setAttribute('points', pts);
+    poly.setAttribute('fill', fill);
+    if (stroke) {
+      poly.setAttribute('stroke', stroke);
+      poly.setAttribute('stroke-width', sw);
+      poly.setAttribute('stroke-linejoin', 'round');
+    }
+    tilesGroup.appendChild(poly);
+  }
+  for (const rh of layer_off) add(rh, '#0a0a0a', '#222', '0.018');
+  for (const rh of layer_emp) { add(rh, '#552020', '#774040', '0.022'); nEmp++; }
+  for (const rh of layer_ce)  { add(rh, '#cc1010', '#ff6644', '0.04'); nCE++; }
+
+  // Overlay: K-vertex marker
+  const K_5tuple_now = sigmaPow(canonicalK.K_vertex_5d, tick);
+  const K_xy = project5_to_E(K_5tuple_now);
+  const c = document.createElementNS(NS, 'circle');
+  c.setAttribute('cx', K_xy[0]); c.setAttribute('cy', K_xy[1]);
+  c.setAttribute('r', 0.18);
+  c.setAttribute('fill', '#ffd');
+  overlayGroup.appendChild(c);
+  const ring = document.createElementNS(NS, 'circle');
+  ring.setAttribute('cx', K_xy[0]); ring.setAttribute('cy', K_xy[1]);
+  ring.setAttribute('r', 0.30);
+  ring.setAttribute('fill', 'none');
+  ring.setAttribute('stroke', '#ffd');
+  ring.setAttribute('stroke-width', '0.04');
+  overlayGroup.appendChild(ring);
+
+  // Faint dashed circle through where the K travels (cycle radius)
+  const cycle_r = Math.hypot(K_xy[0], K_xy[1]);
+  const cyc = document.createElementNS(NS, 'circle');
+  cyc.setAttribute('cx', '0'); cyc.setAttribute('cy', '0');
+  cyc.setAttribute('r', cycle_r.toFixed(3));
+  cyc.setAttribute('fill', 'none');
+  cyc.setAttribute('stroke', '#443');
+  cyc.setAttribute('stroke-width', '0.025');
+  cyc.setAttribute('stroke-dasharray', '0.10 0.10');
+  cyc.setAttribute('opacity', '0.5');
+  overlayGroup.appendChild(cyc);
+
+  // Mark the 5 K positions (faint)
+  for (let j = 0; j < state.cycleN; j++) {
+    const v = sigmaPow(canonicalK.K_vertex_5d, j);
+    const xy = project5_to_E(v);
+    const c2 = document.createElementNS(NS, 'circle');
+    c2.setAttribute('cx', xy[0]); c2.setAttribute('cy', xy[1]);
+    c2.setAttribute('r', 0.10);
+    c2.setAttribute('fill', j === tick ? '#ff6' : '#664');
+    c2.setAttribute('opacity', j === tick ? '1.0' : '0.5');
+    overlayGroup.appendChild(c2);
+  }
+
+  // Update info pane
+  document.getElementById('gamma-info').textContent =
+    `(${gamma5[0].toFixed(3)},${gamma5[1].toFixed(3)},${gamma5[2].toFixed(3)},${gamma5[3].toFixed(3)},${gamma5[4].toFixed(3)})`;
+  document.getElementById('ce-info').textContent =
+    `(${K_xy[0].toFixed(2)}, ${K_xy[1].toFixed(2)}), θ = ${(Math.atan2(K_xy[1], K_xy[0])*180/Math.PI).toFixed(1)}°`;
+  document.getElementById('kct-info').textContent = `${nCE}`;
+  document.getElementById('emp-info').textContent = `${nEmp}`;
+  document.getElementById('patch-info').textContent = `${rhombi.length} (gen ${(t1-t0).toFixed(0)}ms)`;
+  document.getElementById('tick-info').textContent = `${tick} of ${state.cycleN}`;
+  document.getElementById('cycle-stat').textContent = `tick ${tick} / ${state.cycleN} (Z_${state.cycleN})`;
+
+  // Update 3D inset's γ̃ marker and W/W_E translations
+  update3DInset(gamma5);
+}
+
+// ============================================================================
+// 3D inset (Three.js): W large, W_E small, γ̃ marker
+// ============================================================================
+let scene3d = null, camera3d = null, renderer3d = null, controls3d = null;
+let WMesh = null, WMeshWire = null, WEMesh = null, WEMeshWire = null;
+let gammaMarker = null;
+let WGroup = null;  // group for W + WE so they translate together
+
+function setup3DInset() {
+  const el = document.getElementById('perp-3d');
+  const W = el.clientWidth, H = Math.max(360, el.clientHeight);
+  scene3d = new THREE_NS.Scene();
+  scene3d.background = new THREE_NS.Color(0x0a0a14);
+  camera3d = new THREE_NS.PerspectiveCamera(45, W/H, 0.01, 100);
+  camera3d.position.set(2.5, 1.8, 2.8);
+  renderer3d = new THREE_NS.WebGLRenderer({ antialias: true });
+  renderer3d.setSize(W, H);
+  el.appendChild(renderer3d.domElement);
+  controls3d = new OrbitCtl(camera3d, renderer3d.domElement);
+  controls3d.enableDamping = true;
+  // lights
+  scene3d.add(new THREE_NS.AmbientLight(0xaaaaee, 0.6));
+  const dl = new THREE_NS.DirectionalLight(0xffffff, 0.9);
+  dl.position.set(3, 5, 3);
+  scene3d.add(dl);
+  // axes
+  scene3d.add(new THREE_NS.AxesHelper(0.35));
+
+  // Build W mesh
+  WGroup = new THREE_NS.Group();
+  scene3d.add(WGroup);
+  buildPolytopeMesh(DATA.cut_window.vertices, DATA.cut_window.faces, 0x5577cc, 0.18, 0x88aacc, true);
+  // Build W_E mesh (smaller, inside W)
+  if (DATA.empire_window.vertices.length > 0) {
+    buildPolytopeMesh(DATA.empire_window.vertices, DATA.empire_window.faces, 0xcc4040, 0.55, 0xff8866, false);
+  }
+
+  // γ̃ marker (yellow sphere)
+  gammaMarker = new THREE_NS.Mesh(
+    new THREE_NS.SphereGeometry(0.04, 16, 16),
+    new THREE_NS.MeshPhongMaterial({ color: 0xffdd33 })
+  );
+  scene3d.add(gammaMarker);
+  // γ̃ trace circle in I-plane
+  const traceGeo = new THREE_NS.BufferGeometry();
+  const tracePts = [];
+  const trN = 64;
+  for (let i = 0; i <= trN; i++) {
+    const a = (i / trN) * 2 * Math.PI;
+    tracePts.push(state.gamma_radius * Math.cos(a), state.gamma_radius * Math.sin(a), 0);
+  }
+  traceGeo.setAttribute('position', new THREE_NS.Float32BufferAttribute(tracePts, 3));
+  scene3d.add(new THREE_NS.Line(traceGeo, new THREE_NS.LineBasicMaterial({ color: 0x665533 })));
+
+  // animate
+  function animate() {
+    controls3d.update();
+    renderer3d.render(scene3d, camera3d);
+    requestAnimationFrame(animate);
+  }
+  animate();
+}
+
+function buildPolytopeMesh(verts, faces, color, opacity, edgeColor, isW) {
+  const geom = new THREE_NS.BufferGeometry();
+  const positions = [];
+  for (const f of faces) for (const idx of f) {
+    positions.push(verts[idx][0], verts[idx][1], verts[idx][2]);
+  }
+  geom.setAttribute('position', new THREE_NS.Float32BufferAttribute(positions, 3));
+  geom.computeVertexNormals();
+  const mat = new THREE_NS.MeshPhongMaterial({
+    color, opacity, transparent: opacity < 1.0,
+    side: THREE_NS.DoubleSide, flatShading: true,
+  });
+  const mesh = new THREE_NS.Mesh(geom, mat);
+  WGroup.add(mesh);
+  if (isW) WMesh = mesh; else WEMesh = mesh;
+
+  // Wireframe edges
+  const edges = new Set();
+  for (const f of faces) {
+    for (let i = 0; i < f.length; i++) {
+      const a = f[i], b = f[(i+1) % f.length];
+      const k = a < b ? `${a},${b}` : `${b},${a}`;
+      edges.add(k);
+    }
+  }
+  const edgePts = [];
+  for (const k of edges) {
+    const [a, b] = k.split(',').map(Number);
+    edgePts.push(verts[a][0], verts[a][1], verts[a][2]);
+    edgePts.push(verts[b][0], verts[b][1], verts[b][2]);
+  }
+  const eGeo = new THREE_NS.BufferGeometry();
+  eGeo.setAttribute('position', new THREE_NS.Float32BufferAttribute(edgePts, 3));
+  const wire = new THREE_NS.LineSegments(eGeo, new THREE_NS.LineBasicMaterial({ color: edgeColor }));
+  WGroup.add(wire);
+  if (isW) WMeshWire = wire; else WEMeshWire = wire;
+}
+
+function update3DInset(gamma_5d) {
+  // γ̃ in E_perp basis = (γ·B3, γ·B4, γ·B5) — but our γ has γ·B5 = 0 by sum cond
+  const gp = project5_to_Eperp(gamma_5d);
+  // Translate W and WE meshes by γ̃ (so they shift along with the cut-window translation)
+  // Equivalently: keep W fixed and move γ̃ marker. We choose: move W+W_E by γ̃, keep γ̃ marker at (γ̃)_perp.
+  // Show conceptually: γ̃ is the OFFSET of the cut-window from origin.
+  if (WGroup) WGroup.position.set(gp[0], gp[1], gp[2]);
+  if (gammaMarker) gammaMarker.position.set(gp[0], gp[1], gp[2]);
+}
+
+// ============================================================================
+// Init
+// ============================================================================
+function init() {
+  if (!DATA) return;
+  // Load constants
+  B = DATA.B;
+  W_normals = DATA.cut_window.normals;
+  W_offsets = DATA.cut_window.offsets;
+  canonicalK = DATA.canonical_K_CE;
+  canonicalEmpire = DATA.canonical_K_empire;
+
+  setup3DInset();
+  render2D();
+
+  // Controls
+  document.getElementById('btn-prev').onclick = () => { state.tick = (state.tick - 1 + state.cycleN) % state.cycleN; render2D(); };
+  document.getElementById('btn-next').onclick = () => { state.tick = (state.tick + 1) % state.cycleN; render2D(); };
+  document.getElementById('btn-play').onclick = () => {
+    state.playing = !state.playing;
+    document.getElementById('btn-play').textContent = state.playing ? '⏸ Pause' : '▶ Auto';
+    if (state.playing) autoTick();
+  };
+  document.getElementById('btn-mode').onclick = () => {
+    state.cycleN = state.cycleN === 5 ? 10 : (state.cycleN === 10 ? 20 : 5);
+    state.tick = state.tick % state.cycleN;
+    document.getElementById('btn-mode').textContent =
+      `Mode: Z_${state.cycleN} (${state.cycleN} ticks)`;
+    render2D();
+  };
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft') document.getElementById('btn-prev').click();
+    else if (e.key === 'ArrowRight') document.getElementById('btn-next').click();
+    else if (e.key === ' ') { e.preventDefault(); document.getElementById('btn-play').click(); }
+  });
+}
+
+function autoTick() {
+  if (!state.playing) return;
+  document.getElementById('btn-next').click();
+  setTimeout(autoTick, 1100);
+}
+</script>
+</body>
+</html>
