@@ -321,21 +321,21 @@ function render2D() {
     else if (emp_keys.has(k)) layer_emp.push(rh);
     else layer_off.push(rh);
   }
+  // Compute K's 2D position for THIS tick (centre of Φ² inflation event).
+  // K-CE and empire are scaled UNIFORMLY around K_xy by φ², so all Φ²
+  // tiles stay edge-coherent as a single Φ² cluster (instead of each
+  // tile scaled around its own centroid, which produces overlap chaos).
+  const K_5tuple_for_scale = sigmaPow(DATA.canonical_K_CE.K_vertex_5d, tick);
+  const K_xy_for_scale = project2D(K_5tuple_for_scale, gamma5);
+  const PHI2 = (1 + Math.sqrt(5)) * (1 + Math.sqrt(5)) / 4; // φ² ≈ 2.618
+
   function add(rh, fill, stroke, sw, scale) {
-    // scale: per-rhomb size multiplier around the rhomb's own centroid.
-    // Φ¹ substrate uses scale=1 (rhombs at native edge length 1).
-    // Φ² K-CE / empire use scale = φ² ≈ 2.618 — visibly larger tiles
-    // representing one Penrose inflation step (Klee 2026-05-01).
     let pts;
     if (scale === 1) {
       pts = rh.corners_xy.map(p => `${p[0].toFixed(4)},${p[1].toFixed(4)}`).join(' ');
     } else {
-      // Compute centroid and scale corners outward from it
-      const corners = rh.corners_xy;
-      let cx = 0, cy = 0;
-      for (const p of corners) { cx += p[0]; cy += p[1]; }
-      cx /= corners.length; cy /= corners.length;
-      const scaled = corners.map(p => [
+      const cx = K_xy_for_scale[0], cy = K_xy_for_scale[1];
+      const scaled = rh.corners_xy.map(p => [
         cx + (p[0] - cx) * scale,
         cy + (p[1] - cy) * scale,
       ]);
@@ -351,7 +351,6 @@ function render2D() {
     }
     tilesGroup.appendChild(poly);
   }
-  const PHI2 = (1 + Math.sqrt(5)) * (1 + Math.sqrt(5)) / 4; // φ² ≈ 2.618
   for (const rh of layer_off) add(rh, '#0a0a0a', '#333', '0.020', 1);
   for (const rh of layer_emp) { add(rh, '#552020', '#774040', '0.060', PHI2); nEmp++; }
   for (const rh of layer_ce)  { add(rh, '#cc1010', '#ff6644', '0.10',  PHI2); nCE++; }
