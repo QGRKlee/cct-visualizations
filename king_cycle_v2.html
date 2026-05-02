@@ -345,31 +345,33 @@ function render2D() {
   for (const rh of layer_ce)  { add(rh, '#ffb0b0', '#ff6644', '0.025'); nCE++; }
 
   // Highlight the central Sun's 5 thick rhombs (degree-5 all-thick vertex
-  // → 5×72° = 360° = clean PT vertex). Light blue overlay so the
-  // 5-fold decagon at the centre is visually unmistakable.
-  if (DATA.central_sun && DATA.central_sun.rhomb_indices) {
+  // → 5×72° = 360° = clean PT vertex). Final-pass overlay so the 5-fold
+  // decagon at the centre is unmistakable, regardless of whether the
+  // Sun rhombs are also K-empire / K-CE / substrate by classification.
+  if (DATA.central_sun) {
     const sun5 = DATA.central_sun['5tuple'];
     const sun_xy = DATA.central_sun.xy_2d;
-    // Mark the Sun vertex with a small marker for clarity
+    const sun_key = sun5.join(',');
+    const sunFill = '#a8c8ff';
+    let sun_count = 0;
+    // Iterate ALL rhombs in the patch (substrate + empire + K-CE) and
+    // re-paint any rhomb that has the Sun 5-tuple as one of its corners.
+    for (const rh of rhombi) {
+      const has_sun = rh.corners_5d.some(c => c.join(',') === sun_key);
+      if (!has_sun) continue;
+      add(rh, sunFill, '#3050cc', '0.05');
+      sun_count++;
+    }
+    // Sun vertex marker (drawn last on overlay layer so it stays visible)
     const sunDot = document.createElementNS(NS, 'circle');
     sunDot.setAttribute('cx', sun_xy[0].toFixed(4));
     sunDot.setAttribute('cy', sun_xy[1].toFixed(4));
-    sunDot.setAttribute('r', '0.12');
-    sunDot.setAttribute('fill', '#3050cc');
+    sunDot.setAttribute('r', '0.10');
+    sunDot.setAttribute('fill', '#1530aa');
     sunDot.setAttribute('stroke', '#88aaff');
     sunDot.setAttribute('stroke-width', '0.04');
     overlayGroup.appendChild(sunDot);
-    // Find the Sun's 5 thick rhombs in the patch (they're rhomb_indices
-    // from prepare-time). At runtime, we just identify them by checking
-    // each rhomb's 5-tuples for the Sun 5-tuple — Sun does NOT σ-rotate.
-    const sun_key = sun5.join(',');
-    const sunFill = '#a8c8ff';  // light blue
-    for (const rh of layer_off) {
-      const has_sun = rh.corners_5d.some(c => c.join(',') === sun_key);
-      if (!has_sun) continue;
-      // Re-render in light blue (overlays previous gray)
-      add(rh, sunFill, '#5078cc', '0.030');
-    }
+    document.title = `Sun rhombs highlighted: ${sun_count}`;  // diagnostic
   }
 
   // ---- Φ² subset overlay DELETED (Klee directive 2026-05-01) ----
