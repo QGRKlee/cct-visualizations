@@ -266,6 +266,16 @@ function sigmaPow(v, t) {
   return r;
 }
 
+// σ around the Sun: rotate v around the Sun's 5D position instead of origin.
+// K_t = σ^t(K - SUN) + SUN. This makes the K-CE orbit the central Sun
+// (instead of the SVG origin) per tick — Klee's reference: "K type rotating
+// around it [the Sun] in 5 steps."
+function sigmaPowAroundSun(v, t, sun5) {
+  const dv = v.map((x, i) => x - sun5[i]);
+  const rdv = sigmaPow(dv, t);
+  return rdv.map((x, i) => x + sun5[i]);
+}
+
 function gammaForTick(t) {
   // γ̃ stays FIXED at γ_0 across all ticks. Rationale (Klee 2026-05-01):
   // We want a STATIONARY central star decagon with the K-CE rotating
@@ -301,15 +311,20 @@ function render2D() {
   const rhombi = findRhombi(accepted, acceptedKey);
   const t1 = performance.now();
 
-  // K-CE and empire 5-tuples for THIS tick (σ^t applied to canonical):
+  // K-CE and empire 5-tuples for THIS tick (σ^t applied AROUND THE SUN
+  // so the K-CE orbits the central Sun, not the SVG origin).
+  const SUN_5 = (DATA.central_sun && DATA.central_sun['5tuple'])
+    ? DATA.central_sun['5tuple']
+    : [0, 0, 0, 0, 0];
+  const sigT = (c) => sigmaPowAroundSun(c, tick, SUN_5);
   const K_keys = new Set();
   for (const rh of DATA.canonical_K_CE.K_tiles) {
-    const corners_t = rh.corners_5d.map(c => sigmaPow(c, tick));
+    const corners_t = rh.corners_5d.map(sigT);
     K_keys.add(rhKey(corners_t));
   }
   const emp_keys = new Set();
   for (const rh of DATA.canonical_K_empire) {
-    const corners_t = rh.corners_5d.map(c => sigmaPow(c, tick));
+    const corners_t = rh.corners_5d.map(sigT);
     emp_keys.add(rhKey(corners_t));
   }
 
@@ -384,7 +399,7 @@ function render2D() {
   // an outer thin rhomb of the central Sun decagon.
 
   // K-vertex marker
-  const K_5tuple_now = sigmaPow(DATA.canonical_K_CE.K_vertex_5d, tick);
+  const K_5tuple_now = sigmaPowAroundSun(DATA.canonical_K_CE.K_vertex_5d, tick, SUN_5);
   const K_xy = project2D(K_5tuple_now, gamma5);
   const cKv = document.createElementNS(NS, 'circle');
   cKv.setAttribute('cx', K_xy[0]); cKv.setAttribute('cy', K_xy[1]);
