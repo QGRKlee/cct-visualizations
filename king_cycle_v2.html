@@ -356,8 +356,24 @@ function render2D() {
   for (const rh of layer_off) add(rh, '#f8f8f8', '#aaa', '0.020');
   // Φ¹ K-empire (pink)
   for (const rh of layer_emp) { add(rh, '#f4c4c4', '#cc8888', '0.025'); nEmp++; }
-  // Φ¹ K-CE (light red)
-  for (const rh of layer_ce)  { add(rh, '#ffb0b0', '#ff6644', '0.025'); nCE++; }
+  // Φ¹ K-CE: render directly from σ-around-Sun rhomb corners (don't depend
+  // on patch-matching — at some ticks the σ-orbit corners fall outside W
+  // and the patch generator excludes them, leaving K-CE incomplete. By
+  // computing 2D positions from σ-rotated 5-tuples directly, every tick
+  // shows the full 4-rhomb K-CE.
+  for (const rh of DATA.canonical_K_CE.K_tiles) {
+    const corners_t = rh.corners_5d.map(sigT);
+    const xy = corners_t.map(c => project2D(c, gamma5));
+    const pts = xy.map(p => `${p[0].toFixed(4)},${p[1].toFixed(4)}`).join(' ');
+    const poly = document.createElementNS(NS, 'polygon');
+    poly.setAttribute('points', pts);
+    poly.setAttribute('fill', '#ffb0b0');
+    poly.setAttribute('stroke', '#ff6644');
+    poly.setAttribute('stroke-width', '0.04');
+    poly.setAttribute('stroke-linejoin', 'round');
+    tilesGroup.appendChild(poly);
+    nCE++;
+  }
 
   // Highlight the central Sun's 5 thick rhombs (degree-5 all-thick vertex
   // → 5×72° = 360° = clean PT vertex). Final-pass overlay so the 5-fold
