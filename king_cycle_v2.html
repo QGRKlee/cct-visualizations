@@ -354,8 +354,22 @@ function render2D() {
   }
   // Substrate: light gray (Φ¹ background tiling, edge 1)
   for (const rh of layer_off) add(rh, '#f8f8f8', '#aaa', '0.020');
-  // Φ¹ K-empire (pink)
-  for (const rh of layer_emp) { add(rh, '#f4c4c4', '#cc8888', '0.025'); nEmp++; }
+  // Φ¹ K-empire — render directly from σ-around-Sun corners (same reason
+  // as K-CE: patch-match-based rendering loses tiles when σ-orbit corners
+  // fall outside W).
+  for (const rh of DATA.canonical_K_empire) {
+    const corners_t = rh.corners_5d.map(sigT);
+    const xy = corners_t.map(c => project2D(c, gamma5));
+    const pts = xy.map(p => `${p[0].toFixed(4)},${p[1].toFixed(4)}`).join(' ');
+    const poly = document.createElementNS(NS, 'polygon');
+    poly.setAttribute('points', pts);
+    poly.setAttribute('fill', '#f4c4c4');
+    poly.setAttribute('stroke', '#cc8888');
+    poly.setAttribute('stroke-width', '0.025');
+    poly.setAttribute('stroke-linejoin', 'round');
+    tilesGroup.appendChild(poly);
+    nEmp++;
+  }
   // Φ¹ K-CE: render directly from σ-around-Sun rhomb corners (don't depend
   // on patch-matching — at some ticks the σ-orbit corners fall outside W
   // and the patch generator excludes them, leaving K-CE incomplete. By
